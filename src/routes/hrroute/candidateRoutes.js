@@ -139,8 +139,6 @@ const upload = multer({
  *                   type: string
  *                 candidateId:
  *                   type: integer
- *                 caseId:
- *                   type: string
  *                 createdByRole:
  *                   type: string
  *       409:
@@ -170,7 +168,7 @@ router.post(
 
       /* ── DUPLICATE PHONE CHECK ── */
       const [phoneRows] = await pool.query(
-        "SELECT cand_id FROM candidate_master WHERE phone = ?",
+        "SELECT cand_id FROM candidate_master WHERE candidate_mobile = ?",
         [phone]
       );
 
@@ -184,7 +182,7 @@ router.post(
 
       /* ── DUPLICATE EMAIL CHECK ── */
       const [emailRows] = await pool.query(
-        "SELECT cand_id FROM candidate_master WHERE email = ?",
+        "SELECT cand_id FROM candidate_master WHERE candidate_email = ?",
         [email]
       );
 
@@ -196,50 +194,18 @@ router.post(
         });
       }
 
-      /* ── AUTO-GENERATE case_id ── */
-      const caseId = "BGV" + Date.now();
-
-      /* ── GET OR CREATE cm_id ── */
-      let cmId;
-
-      const [clientRows] = await pool.query(
-        "SELECT cm_id FROM client_master LIMIT 1"
-      );
-
-      if (clientRows.length === 0) {
-        const [newClient] = await pool.query(
-          `INSERT INTO client_master
-            (company_name, contact_person_name, contact_email, contact_phone, is_active, is_delete)
-           VALUES (?, ?, ?, ?, 1, 0)`,
-          ["Default Company", "Admin", "admin@bgvplatform.com", "9000000000"]
-        );
-        cmId = newClient.insertId;
-      } else {
-        cmId = clientRows[0].cm_id;
-      }
-
-      /* ── ROLE KE BASE PAR CREATED_BY SET KARO ── */
-      let createdByHr          = null;
-      let createdByClientAdmin = null;
-
-      if (createdByRole === "client_admin") {
-        createdByClientAdmin = createdById || null;
-      } else {
-        createdByHr = createdById || null;
-      }
-
       /* ── INSERT INTO candidate_master ── */
       const [result] = await pool.query(
         `INSERT INTO candidate_master
-          (case_id, cm_id, created_by_hr, created_by_client_admin,
-           first_name, last_name, email, phone,
-           job_function, tag, case_status, is_active, is_delete)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 0)`,
+          (cm_id, created_by_users,
+           candidate_first_name, candidate_last_name,
+           candidate_email, candidate_mobile,
+           candidate_function, candidate_tag,
+           verification_status, is_active, is_delete,
+           created_at, updated_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, 1, 0, NOW(), NOW())`,
         [
-          caseId,
-          cmId,
-          createdByHr,
-          createdByClientAdmin,
+          createdById || null,
           firstName,
           lastName,
           email,
@@ -253,7 +219,6 @@ router.post(
         success: true,
         message: "Candidate Created Successfully",
         candidateId: result.insertId,
-        caseId,
         createdByRole: createdByRole || "hr",
       });
 
@@ -364,27 +329,10 @@ router.post(
         });
       }
 
-      /* GET OR CREATE cm_id (client) */
-      let cmId;
-      const [clientRows] = await pool.query(
-        "SELECT cm_id FROM client_master LIMIT 1"
-      );
-
-      if (clientRows.length === 0) {
-        const [newClient] = await pool.query(
-          `INSERT INTO client_master
-            (company_name, contact_person_name, contact_email, contact_phone, is_active, is_delete)
-           VALUES (?, ?, ?, ?, 1, 0)`,
-          ["Default Company", "Admin", "admin@bgvplatform.com", "9000000000"]
-        );
-        cmId = newClient.insertId;
-      } else {
-        cmId = clientRows[0].cm_id;
-      }
-
       /* INSERT LOOP — skip duplicates */
       const created = [];
       const skipped = [];
+
 
       for (let i = 0; i < data.length; i++) {
         const item = data[i];
@@ -398,7 +346,7 @@ router.post(
 
         /* Duplicate phone check */
         const [phoneRows] = await pool.query(
-          "SELECT cand_id FROM candidate_master WHERE phone = ?",
+          "SELECT cand_id FROM candidate_master WHERE candidate_mobile = ?",
           [phone]
         );
 
@@ -409,7 +357,7 @@ router.post(
 
         /* Duplicate email check */
         const [emailRows] = await pool.query(
-          "SELECT cand_id FROM candidate_master WHERE email = ?",
+          "SELECT cand_id FROM candidate_master WHERE candidate_email = ?",
           [email]
         );
 
@@ -419,17 +367,18 @@ router.post(
         }
 
         /* Insert */
-        const caseId = "BGV" + Date.now() + i;
-
         await pool.query(
           `INSERT INTO candidate_master
-            (case_id, cm_id, first_name, last_name, email, phone,
-             job_function, tag, case_status, is_active, is_delete)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 0)`,
-          [caseId, cmId, firstName, lastName, email, phone, jobFunction, tag]
+            (cm_id, candidate_first_name, candidate_last_name,
+             candidate_email, candidate_mobile,
+             candidate_function, candidate_tag,
+             verification_status, is_active, is_delete,
+             created_at, updated_at)
+           VALUES (1, ?, ?, ?, ?, ?, ?, 1, 1, 0, NOW(), NOW())`,
+          [firstName, lastName, email, phone, jobFunction || null, tag || null]
         );
 
-        created.push({ name: `${firstName} ${lastName}`, email, caseId });
+        created.push({ name: `${firstName} ${lastName}`, email });
       }
 
       return res.status(201).json({
@@ -514,18 +463,14 @@ router.get(
       const [rows] = await pool.query(
         `SELECT
            cand_id,
-           case_id,
-           first_name,
-           last_name,
-           email,
-           phone,
-           date_of_birth,
-           gender,
-           father_name,
-           nationality,
-           job_function,
-           tag,
-           case_status,
+           cand_id                  AS case_id,
+           candidate_first_name     AS first_name,
+           candidate_last_name      AS last_name,
+           candidate_email          AS email,
+           candidate_mobile         AS phone,
+           candidate_function       AS job_function,
+           candidate_tag            AS tag,
+           verification_status      AS case_status,
            created_at,
            updated_at
          FROM candidate_master
@@ -608,24 +553,26 @@ router.get(
 
       const [rows] = await pool.query(
         `SELECT
-          cm.cand_id, cm.case_id, cm.created_by_hr, cm.created_by_client_admin,
-          cm.first_name, cm.last_name, cm.email, cm.phone, cm.job_function, cm.tag,
-          cm.case_status, cm.is_active, cm.is_delete, cm.created_at, cm.updated_at,
-          CASE
-            WHEN cm.created_by_hr IS NOT NULL THEN 'HR'
-            WHEN cm.created_by_client_admin IS NOT NULL THEN 'Client Admin'
-            ELSE 'Unknown'
-          END AS created_by_role,
-          CASE
-            WHEN cm.created_by_hr IS NOT NULL THEN CONCAT(u_hr.first_name, ' ', u_hr.last_name)
-            WHEN cm.created_by_client_admin IS NOT NULL THEN CONCAT(u_admin.first_name, ' ', u_admin.last_name)
-            ELSE '-'
-          END AS created_by_name
-         FROM candidate_master cm
-         LEFT JOIN users u_hr ON cm.created_by_hr = u_hr.users_id
-         LEFT JOIN users u_admin ON cm.created_by_client_admin = u_admin.users_id
-         WHERE cm.is_delete = 0
-         ORDER BY cm.created_at DESC
+          cand_id,
+          cand_id AS case_id,
+          created_by_users AS created_by_hr,
+          NULL AS created_by_client_admin,
+          candidate_first_name AS first_name,
+          candidate_last_name AS last_name,
+          candidate_email AS email,
+          candidate_mobile AS phone,
+          candidate_function AS job_function,
+          candidate_tag AS tag,
+          verification_status AS case_status,
+          is_active,
+          is_delete,
+          created_at,
+          updated_at,
+          'HR' AS created_by_role,
+          '-' AS created_by_name
+         FROM candidate_master
+         WHERE is_delete = 0
+         ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
         [limit, offset]
       );

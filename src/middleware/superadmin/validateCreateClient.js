@@ -12,7 +12,8 @@ const validateCreateClient = (req, res, next) => {
     state,
     pinCode,
     country,
-    fullName,
+    firstName,
+    lastName,
     email,
     phone,
     plan,
@@ -79,9 +80,14 @@ const validateCreateClient = (req, res, next) => {
     errors.country = "Country is required";
   }
 
-  /* FULL NAME */
-  if (!fullName?.trim()) {
-    errors.fullName = "Full name is required";
+  /* FIRST NAME */
+  if (!firstName?.trim()) {
+    errors.firstName = "First name is required";
+  }
+
+  /* LAST NAME */
+  if (!lastName?.trim()) {
+    errors.lastName = "Last name is required";
   }
 
   /* EMAIL */

@@ -90,24 +90,19 @@ router.post(
       phone,
       email,
       clientAdminId,
-      cmId,
       jobFunction,
       tag,
     } = req.body;
 
     try {
 
-      const caseId = "CASE-" + uuidv4().replace(/-/g, "").substring(0, 8).toUpperCase();
-
       await pool.execute(
         `INSERT INTO candidate_master
-          (case_id, cm_id, created_by_client_admin, first_name, last_name, email, phone, job_function, tag, case_status, is_active, created_at, updated_at)
+          (cm_id, created_by_users, candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_tag, verification_status, is_active, created_at, updated_at)
          VALUES
-          (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, NOW(), NOW())`,
+          (1, ?, ?, ?, ?, ?, ?, ?, 1, 1, NOW(), NOW())`,
         [
-          caseId,
-          cmId,
-          clientAdminId,
+          clientAdminId || null,
           firstName.trim(),
           lastName.trim(),
           email.trim().toLowerCase(),
@@ -120,7 +115,6 @@ router.post(
       return res.status(201).json({
         success: true,
         message: "Candidate Created Successfully",
-        caseId,
       });
 
     } catch (err) {
@@ -252,64 +246,36 @@ router.get(
   "/list",
   async (req, res) => {
 
-    const { cmId } = req.query;
-
-    if (!cmId) {
-      return res.status(400).json({
-        success: false,
-        message: "cmId is required",
-      });
-    }
-
     try {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const offset = (page - 1) * limit;
 
       const [countRows] = await pool.execute(
-        `SELECT COUNT(*) as total FROM candidate_master WHERE cm_id = ? AND is_delete = 0`,
-        [cmId]
+        `SELECT COUNT(*) as total FROM candidate_master WHERE is_delete = 0`
       );
       const totalRecords = countRows[0].total;
       const totalPages = Math.ceil(totalRecords / limit);
 
       const [rows] = await pool.execute(
         `SELECT
-          cm.cand_id,
-          cm.case_id,
-          cm.first_name,
-          cm.last_name,
-          cm.email,
-          cm.phone,
-          cm.case_status,
-          cm.created_at,
-
-          -- Created By: Client Admin
-          CASE
-            WHEN cm.created_by_client_admin IS NOT NULL
-              THEN CONCAT(u_admin.first_name, ' ', u_admin.last_name)
-            WHEN cm.created_by_hr IS NOT NULL
-              THEN CONCAT(u_hr.first_name, ' ', u_hr.last_name)
-            ELSE 'Unknown'
-          END AS created_by_name,
-
-          -- Role label
-          CASE
-            WHEN cm.created_by_client_admin IS NOT NULL THEN 'Client Admin'
-            WHEN cm.created_by_hr IS NOT NULL THEN 'HR'
-            ELSE NULL
-          END AS created_by_role
-
-        FROM candidate_master cm
-        LEFT JOIN users u_admin
-          ON cm.created_by_client_admin = u_admin.users_id
-        LEFT JOIN users u_hr
-          ON cm.created_by_hr = u_hr.users_id
-        WHERE cm.cm_id = ?
-          AND cm.is_delete = 0
-        ORDER BY cm.created_at DESC
+          cand_id,
+          cand_id AS case_id,
+          candidate_first_name AS first_name,
+          candidate_last_name  AS last_name,
+          candidate_email      AS email,
+          candidate_mobile     AS phone,
+          candidate_function   AS job_function,
+          candidate_tag        AS tag,
+          verification_status  AS case_status,
+          created_at,
+          'Client Admin' AS created_by_role,
+          '-'            AS created_by_name
+        FROM candidate_master
+        WHERE is_delete = 0
+        ORDER BY created_at DESC
         LIMIT ? OFFSET ?`,
-        [cmId, limit, offset]
+        [limit, offset]
       );
 
       return res.status(200).json({
