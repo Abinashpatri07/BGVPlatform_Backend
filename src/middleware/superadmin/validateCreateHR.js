@@ -55,7 +55,9 @@ const validateCreateHR = (req, res, next) => {
 
   /* ROLE */
   const validRoles = [
-    "HR Exucutive",
+    "HR",
+    "HR 2",
+    "HR Executive",
     "HR Manager",
   ];
 
