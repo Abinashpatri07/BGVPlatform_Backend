@@ -96,12 +96,16 @@ router.post(
 
     try {
 
-      await pool.execute(
-        `INSERT INTO candidate_master
-          (cm_id, created_by_users, candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_tag, verification_status, is_active, created_at, updated_at)
+      // Generate a temporary candidate_id to satisfy NOT NULL constraint
+      const tempId = "TEMP-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
+
+      const [result] = await pool.execute(
+        `INSERT INTO candidate
+          (candidate_id, client_id, created_by_users, candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_tag, verification_status, is_active, is_delete, created_at, updated_at)
          VALUES
-          (1, ?, ?, ?, ?, ?, ?, ?, 1, 1, NOW(), NOW())`,
+          (?, 1, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
         [
+          tempId,
           clientAdminId || null,
           firstName.trim(),
           lastName.trim(),
@@ -110,6 +114,15 @@ router.post(
           jobFunction || null,
           tag || null,
         ]
+      );
+
+      const newCandId = result.insertId;
+      const finalCandidateId = "CAND" + String(newCandId).padStart(4, "0");
+
+      // Update with the final sequential candidate_id
+      await pool.execute(
+        `UPDATE candidate SET candidate_id = ? WHERE cand_id = ?`,
+        [finalCandidateId, newCandId]
       );
 
       return res.status(201).json({
@@ -252,7 +265,7 @@ router.get(
       const offset = (page - 1) * limit;
 
       const [countRows] = await pool.execute(
-        `SELECT COUNT(*) as total FROM candidate_master WHERE is_delete = 0`
+        `SELECT COUNT(*) as total FROM candidate WHERE is_delete = 0`
       );
       const totalRecords = countRows[0].total;
       const totalPages = Math.ceil(totalRecords / limit);
@@ -260,22 +273,25 @@ router.get(
       const [rows] = await pool.execute(
         `SELECT
           cand_id,
-          cand_id AS case_id,
+          candidate_id AS case_id,
           candidate_first_name AS first_name,
-          candidate_last_name  AS last_name,
-          candidate_email      AS email,
-          candidate_mobile     AS phone,
-          candidate_function   AS job_function,
-          candidate_tag        AS tag,
-          verification_status  AS case_status,
+          candidate_last_name AS last_name,
+          candidate_email AS email,
+          candidate_mobile AS phone,
+          candidate_function AS job_function,
+          candidate_tag AS tag,
+          verification_status AS case_status,
+          is_active,
+          is_delete,
           created_at,
-          'Client Admin' AS created_by_role,
-          '-'            AS created_by_name
-        FROM candidate_master
-        WHERE is_delete = 0
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?`,
-        [limit, offset]
+          updated_at,
+          'CLIENT_ADMIN' AS created_by_role,
+          '-' AS created_by_name
+         FROM candidate
+         WHERE is_delete = 0
+         ORDER BY created_at DESC
+         LIMIT ? OFFSET ?`,
+        [String(limit), String(offset)]
       );
 
       return res.status(200).json({

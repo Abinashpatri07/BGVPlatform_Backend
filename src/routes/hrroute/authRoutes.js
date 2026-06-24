@@ -40,7 +40,7 @@ router.post(
       const { email, password } = req.body;
 
       // Temporary password check for demo purposes
-      if (password !== "123456" && password !== "Hr@12345") {
+      if (password !== "123456") {
         return res.status(401).json({
           success: false,
           message: "Invalid email or password",

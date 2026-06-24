@@ -35,6 +35,7 @@ const pool = mysql.createPool({
   ssl: {
     rejectUnauthorized: false,
   },
+  timezone: 'Z',
 });
 
 export default pool;

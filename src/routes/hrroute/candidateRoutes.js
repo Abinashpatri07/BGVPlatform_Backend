@@ -194,18 +194,23 @@ router.post(
         });
       }
 
-      /* ── INSERT INTO candidate_master ── */
+      // Generate a temporary candidate_id to satisfy NOT NULL constraint
+      const tempId = "TEMP-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
+
+      /* ── INSERT INTO candidate ── */
       const [result] = await pool.query(
-        `INSERT INTO candidate_master
-          (cm_id, created_by_users,
+        `INSERT INTO candidate
+          (candidate_id, client_id, created_by_users, assigned_userid,
            candidate_first_name, candidate_last_name,
            candidate_email, candidate_mobile,
            candidate_function, candidate_tag,
            verification_status, is_active, is_delete,
            created_at, updated_at)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, 1, 0, NOW(), NOW())`,
+         VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
         [
+          tempId,
           createdById || null,
+          createdById || null, // Assuming HR creating the candidate assigns themselves
           firstName,
           lastName,
           email,
@@ -213,6 +218,15 @@ router.post(
           jobFunction || null,
           tag || null,
         ]
+      );
+
+      const newCandId = result.insertId;
+      const finalCandidateId = "CAND" + String(newCandId).padStart(4, "0");
+
+      // Update with the final sequential candidate_id
+      await pool.query(
+        `UPDATE candidate SET candidate_id = ? WHERE cand_id = ?`,
+        [finalCandidateId, newCandId]
       );
 
       return res.status(201).json({
@@ -546,16 +560,16 @@ router.get(
       const offset = (page - 1) * limit;
 
       const [countRows] = await pool.query(
-        `SELECT COUNT(*) as total FROM candidate_master WHERE is_delete = 0`
+        `SELECT COUNT(*) as total FROM candidate WHERE is_delete = 0`
       );
-        const totalRecords = countRows[0].total;
+      const totalRecords = countRows[0].total;
       const totalPages = Math.ceil(totalRecords / limit);
 
       const [rows] = await pool.query(
         `SELECT
           cand_id,
-          cand_id AS case_id,
-          created_by_users AS created_by_hr,
+          candidate_id AS case_id,
+          assigned_userid AS created_by_hr,
           NULL AS created_by_client_admin,
           candidate_first_name AS first_name,
           candidate_last_name AS last_name,
@@ -570,7 +584,7 @@ router.get(
           updated_at,
           'HR' AS created_by_role,
           '-' AS created_by_name
-         FROM candidate_master
+         FROM candidate
          WHERE is_delete = 0
          ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
