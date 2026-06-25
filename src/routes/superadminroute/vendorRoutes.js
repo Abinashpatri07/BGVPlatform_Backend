@@ -541,11 +541,9 @@ router.patch("/suspend/:id", async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    // You could also store the reason in a suspend_reason column if it exists,
-    // but for now we set is_suspend = 1 and is_active = 2
     await pool.query(
-      `UPDATE vendor_master SET is_suspend = 1, is_active = 2 WHERE vendor_id = ?`,
-      [id]
+      `UPDATE vendor_master SET is_suspend = 1, suspend_comments = ?, is_active = 2, updated_at = NOW() WHERE vendor_id = ?`,
+      [reason, id]
     );
 
     res.status(200).json({

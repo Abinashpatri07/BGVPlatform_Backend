@@ -11,6 +11,87 @@ const router = express.Router();
 
 /**
  * @swagger
+ * /api/candidate/get-candidate/{id}:
+ *   get:
+ *     summary: Get Candidate Details by ID (Super Admin)
+ *     tags: [Super Admin - Candidate]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Candidate details
+ *       404:
+ *         description: Candidate not found
+ *       500:
+ *         description: Internal Server Error
+ */
+router.get("/get-candidate/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT c.*, 
+              u.firstname AS hr_firstname,
+              u.lastname AS hr_lastname
+       FROM candidate c
+       LEFT JOIN client_user_master u ON c.assigned_userid = u.users_id
+       WHERE (c.candidate_id = ? OR c.cand_id = ?) AND c.is_delete = 0`,
+      [id, id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+
+    const candidate = rows[0];
+    const candId = candidate.cand_id;
+
+    const [address] = await pool.query(`SELECT * FROM candidate_address WHERE cand_id = ?`, [candId]);
+    const [education] = await pool.query(`SELECT * FROM candidate_education WHERE cand_id = ?`, [candId]);
+    const [employment] = await pool.query(`SELECT * FROM candidate_employment WHERE cand_id = ?`, [candId]);
+    const [criminal] = await pool.query(`SELECT * FROM candidate_criminal WHERE cand_id = ?`, [candId]);
+    const [drug] = await pool.query(`SELECT * FROM candidate_drug WHERE cand_id = ?`, [candId]);
+
+    // Handle tables that might not exist yet gracefully
+    let identity = [];
+    try {
+      const [identRows] = await pool.query(`SELECT * FROM candidate_identity WHERE cand_id = ?`, [candId]);
+      identity = identRows;
+    } catch (err) {
+      console.warn("candidate_identity table might not exist yet.");
+    }
+
+    let reference = [];
+    try {
+      const [refRows] = await pool.query(`SELECT * FROM candidate_reference WHERE cand_id = ?`, [candId]);
+      reference = refRows;
+    } catch (err) {
+      console.warn("candidate_reference table might not exist yet.");
+    }
+
+    const data = {
+      ...candidate,
+      address: address[0] || null,
+      education: education || [],
+      employment: employment || [],
+      criminal: criminal || [],
+      drug: drug || [],
+      identity: identity || [],
+      reference: reference || []
+    };
+
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Error fetching candidate:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+/**
+ * @swagger
  * /api/candidate/get-all:
  *   get:
  *     summary: Get all Candidates with pagination (Super Admin)
@@ -407,7 +488,7 @@ router.patch("/on-hold/:id", async (req, res) => {
     /* ── UPDATE STATUS ── */
     await pool.query(
       `UPDATE candidate
-       SET is_onhold = 1, onhold_comment = ?, updated_at = NOW()
+       SET is_onhold = 1, is_reject = 0, onhold_comment = ?, verification_status = 5, updated_at = NOW()
        WHERE cand_id = ?`,
       [reason.trim(), candId]
     );
@@ -419,6 +500,231 @@ router.patch("/on-hold/:id", async (req, res) => {
 
   } catch (error) {
     console.error("on-hold-candidate error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/remove-hold/{id}:
+ *   patch:
+ *     summary: Remove Hold from a Candidate (Super Admin)
+ *     tags: [Super Admin - Candidate]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Candidate ID
+ *     responses:
+ *       200:
+ *         description: Hold removed successfully
+ *       400:
+ *         description: Invalid candidate ID
+ *       404:
+ *         description: Candidate not found
+ */
+router.patch("/remove-hold/:id", async (req, res) => {
+  try {
+    const candId = parseInt(req.params.id);
+
+    if (!candId || isNaN(candId)) {
+      return res.status(400).json({ success: false, message: "Invalid candidate ID" });
+    }
+
+    /* ── CHECK CANDIDATE EXISTS ── */
+    const [existing] = await pool.query(
+      "SELECT cand_id, is_onhold FROM candidate WHERE cand_id = ? AND is_delete = 0",
+      [candId]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+
+    if (Number(existing[0].is_onhold) === 0) {
+      return res.status(400).json({ success: false, message: "Candidate is not on hold" });
+    }
+
+    /* ── UPDATE STATUS ── */
+    await pool.query(
+      `UPDATE candidate
+       SET is_onhold = 0, onhold_comment = NULL, verification_status = 2, updated_at = NOW()
+       WHERE cand_id = ?`,
+      [candId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Hold removed successfully",
+    });
+
+  } catch (error) {
+    console.error("remove-hold-candidate error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/assign-hr/{id}:
+ *   patch:
+ *     summary: Assign HR to a Candidate (Super Admin)
+ *     tags: [Super Admin - Candidate]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Candidate ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - hrId
+ *             properties:
+ *               hrId:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: HR assigned successfully
+ *       400:
+ *         description: Invalid HR ID
+ *       404:
+ *         description: Candidate or HR not found
+ */
+router.patch("/assign-hr/:id", async (req, res) => {
+  try {
+    const candId = parseInt(req.params.id);
+    if (!candId || isNaN(candId)) {
+      return res.status(400).json({ success: false, message: "Invalid candidate ID" });
+    }
+
+    const { hrId } = req.body;
+    if (!hrId || isNaN(parseInt(hrId))) {
+      return res.status(400).json({ success: false, message: "Valid HR ID is required" });
+    }
+
+    /* ── FETCH HR DETAILS ── */
+    const [hrResults] = await pool.query(
+      "SELECT firstname, lastname, email FROM client_user_master WHERE users_id = ? AND is_delete = 0",
+      [hrId]
+    );
+
+    if (hrResults.length === 0) {
+      return res.status(404).json({ success: false, message: "HR not found" });
+    }
+
+    const hr = hrResults[0];
+
+    /* ── UPDATE CANDIDATE ── */
+    const [updateResult] = await pool.query(
+      `UPDATE candidate 
+       SET assigned_userid = ?, 
+           assigned_hr_firstname = ?, 
+           assigned_hr_lastname = ?, 
+           assigned_hr_email = ?,
+           updated_at = NOW()
+       WHERE cand_id = ?`,
+      [hrId, hr.firstname, hr.lastname, hr.email, candId]
+    );
+
+    if (updateResult.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "HR assigned successfully",
+    });
+
+  } catch (error) {
+    console.error("assign-hr error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/bulk-assign-hr:
+ *   patch:
+ *     summary: Bulk Assign HR to Candidates (Super Admin)
+ *     tags: [Super Admin - Candidate]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - candidateIds
+ *               - hrId
+ *             properties:
+ *               candidateIds:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *               hrId:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: HR assigned successfully
+ *       400:
+ *         description: Invalid HR ID or candidate IDs
+ *       404:
+ *         description: HR not found
+ */
+router.patch("/bulk-assign-hr", async (req, res) => {
+  try {
+    const { candidateIds, hrId } = req.body;
+
+    if (!candidateIds || !Array.isArray(candidateIds) || candidateIds.length === 0) {
+      return res.status(400).json({ success: false, message: "A list of candidate IDs is required" });
+    }
+
+    if (!hrId || isNaN(parseInt(hrId))) {
+      return res.status(400).json({ success: false, message: "Valid HR ID is required" });
+    }
+
+    /* ── FETCH HR DETAILS ── */
+    const [hrResults] = await pool.query(
+      "SELECT firstname, lastname, email FROM client_user_master WHERE users_id = ? AND is_delete = 0",
+      [hrId]
+    );
+
+    if (hrResults.length === 0) {
+      return res.status(404).json({ success: false, message: "HR not found" });
+    }
+
+    const hr = hrResults[0];
+
+    /* ── UPDATE CANDIDATES ── */
+    // Create placeholders for the IN clause (?, ?, ?)
+    const placeholders = candidateIds.map(() => '?').join(',');
+
+    const [updateResult] = await pool.query(
+      `UPDATE candidate 
+       SET assigned_userid = ?, 
+           assigned_hr_firstname = ?, 
+           assigned_hr_lastname = ?, 
+           assigned_hr_email = ?,
+           updated_at = NOW()
+       WHERE cand_id IN (${placeholders})`,
+      [hrId, hr.firstname, hr.lastname, hr.email, ...candidateIds]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `${updateResult.affectedRows} Candidates assigned to HR successfully`,
+    });
+
+  } catch (error) {
+    console.error("bulk-assign-hr error:", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
@@ -492,7 +798,7 @@ router.patch("/reject/:id", async (req, res) => {
     /* ── UPDATE STATUS ── */
     await pool.query(
       `UPDATE candidate
-       SET is_reject = 1, reject_comment = ?, updated_at = NOW()
+       SET is_reject = 1, is_onhold = 0, reject_comment = ?, verification_status = 3, updated_at = NOW()
        WHERE cand_id = ?`,
       [reason.trim(), candId]
     );

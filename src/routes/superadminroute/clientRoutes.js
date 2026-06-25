@@ -183,6 +183,7 @@ router.get("/get-all-clients", async (req, res) => {
         city,
         state,
         is_active,
+        is_suspend,
         created_at
       FROM client_master
       WHERE is_delete = 0
@@ -194,9 +195,9 @@ router.get("/get-all-clients", async (req, res) => {
     const [[stats]] = await pool.query(
       `SELECT
          COUNT(*) AS total,
-         SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active,
-         SUM(CASE WHEN is_active = 2 THEN 1 ELSE 0 END) AS inactive,
-         SUM(CASE WHEN is_active = 3 THEN 1 ELSE 0 END) AS suspended
+         SUM(CASE WHEN is_suspend != 1 AND is_active = 1 THEN 1 ELSE 0 END) AS active,
+         SUM(CASE WHEN is_suspend != 1 AND is_active = 2 THEN 1 ELSE 0 END) AS inactive,
+         SUM(CASE WHEN is_suspend = 1 THEN 1 ELSE 0 END) AS suspended
        FROM client_master
        WHERE is_delete = 0`
     );
@@ -274,7 +275,7 @@ router.patch("/suspend-client/:id", async (req, res) => {
 
     /* ── CHECK CLIENT EXISTS ── */
     const [existing] = await pool.query(
-      "SELECT client_id, is_active FROM client_master WHERE client_id = ? AND is_delete = 0",
+      "SELECT client_id, is_active, is_suspend FROM client_master WHERE client_id = ? AND is_delete = 0",
       [clientId]
     );
 
@@ -282,16 +283,16 @@ router.patch("/suspend-client/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "Client not found" });
     }
 
-    if (Number(existing[0].is_active) === 3) {
+    if (Number(existing[0].is_suspend) === 1) {
       return res.status(400).json({ success: false, message: "Client is already suspended" });
     }
 
     /* ── SUSPEND ── */
     await pool.query(
       `UPDATE client_master
-       SET is_active = 3, updated_at = NOW()
+       SET is_suspend = 1, suspend_comments = ?, is_active = 2, updated_at = NOW()
        WHERE client_id = ?`,
-      [clientId]
+      [reason, clientId]
     );
 
     return res.status(200).json({
@@ -351,6 +352,7 @@ router.get("/get-client/:id", async (req, res) => {
         poc_email                                   AS contactEmail,
         poc_mobile                                  AS contactPhone,
         is_active,
+        is_suspend,
         created_at,
         updated_at
       FROM client_master
