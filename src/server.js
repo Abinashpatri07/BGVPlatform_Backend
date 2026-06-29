@@ -33,7 +33,7 @@ const app = express();
 
 /* MIDDLEWARE */
 app.use(cors({
-  origin: ["http://localhost:5173", "http://localhost:5174"],
+  origin: ["http://localhost:5173", "http://localhost:5174", "https://bgv-platformdemo.vercel.app"],
   credentials: true,
 }));
 app.use(express.json());
