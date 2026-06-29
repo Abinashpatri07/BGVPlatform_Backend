@@ -168,7 +168,7 @@ router.post(
 
       /* ── DUPLICATE PHONE CHECK ── */
       const [phoneRows] = await pool.query(
-        "SELECT cand_id FROM candidate_master WHERE candidate_mobile = ?",
+        "SELECT cand_id FROM candidate WHERE candidate_mobile = ? AND is_delete = 0",
         [phone]
       );
 
@@ -182,7 +182,7 @@ router.post(
 
       /* ── DUPLICATE EMAIL CHECK ── */
       const [emailRows] = await pool.query(
-        "SELECT cand_id FROM candidate_master WHERE candidate_email = ?",
+        "SELECT cand_id FROM candidate WHERE candidate_email = ? AND is_delete = 0",
         [email]
       );
 
@@ -327,7 +327,12 @@ router.post(
       /* VALIDATION — required fields */
       const validationErrors = [];
       data.forEach((item, index) => {
-        if (!item.firstName || !item.lastName || !item.phone || !item.email) {
+        const fName = item["First Name"] || item.firstName;
+        const lName = item["Last Name"] || item.lastName;
+        const phone = item["Phone"] || item.phone;
+        const email = item["Email"] || item.email;
+
+        if (!fName || !lName || !phone || !email) {
           validationErrors.push({
             row: index + 2,
             message: "Required fields missing (firstName, lastName, phone, email)",
@@ -347,20 +352,21 @@ router.post(
       const created = [];
       const skipped = [];
 
+      const createdById = req.body.createdById || 15; // default HR ID
 
       for (let i = 0; i < data.length; i++) {
         const item = data[i];
 
-        const phone = String(item.phone).trim();
-        const email = String(item.email).trim().toLowerCase();
-        const firstName = String(item.firstName).trim();
-        const lastName = String(item.lastName).trim();
-        const jobFunction = item.jobFunction ? String(item.jobFunction).trim() : "";
-        const tag = item.tag ? String(item.tag).trim() : "";
+        const phone = String(item["Phone"] || item.phone).trim();
+        const email = String(item["Email"] || item.email).trim().toLowerCase();
+        const firstName = String(item["First Name"] || item.firstName).trim();
+        const lastName = String(item["Last Name"] || item.lastName).trim();
+        const jobFunction = (item["Function"] || item.function || item.jobFunction) ? String(item["Function"] || item.function || item.jobFunction).trim() : "";
+        const tag = (item["Tag"] || item.tag) ? String(item["Tag"] || item.tag).trim() : "";
 
         /* Duplicate phone check */
         const [phoneRows] = await pool.query(
-          "SELECT cand_id FROM candidate_master WHERE candidate_mobile = ?",
+          "SELECT cand_id FROM candidate WHERE candidate_mobile = ? AND is_delete = 0",
           [phone]
         );
 
@@ -371,7 +377,7 @@ router.post(
 
         /* Duplicate email check */
         const [emailRows] = await pool.query(
-          "SELECT cand_id FROM candidate_master WHERE candidate_email = ?",
+          "SELECT cand_id FROM candidate WHERE candidate_email = ? AND is_delete = 0",
           [email]
         );
 
@@ -380,16 +386,28 @@ router.post(
           continue;
         }
 
+        // Generate a temporary candidate_id to satisfy NOT NULL constraint
+        const tempId = "TEMP-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
+
         /* Insert */
-        await pool.query(
-          `INSERT INTO candidate_master
-            (cm_id, candidate_first_name, candidate_last_name,
+        const [insertResult] = await pool.query(
+          `INSERT INTO candidate
+            (candidate_id, client_id, created_by_users, assigned_userid, candidate_first_name, candidate_last_name,
              candidate_email, candidate_mobile,
              candidate_function, candidate_tag,
              verification_status, is_active, is_delete,
              created_at, updated_at)
-           VALUES (1, ?, ?, ?, ?, ?, ?, 1, 1, 0, NOW(), NOW())`,
-          [firstName, lastName, email, phone, jobFunction || null, tag || null]
+           VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
+          [tempId, createdById || null, createdById || null, firstName, lastName, email, phone, jobFunction || null, tag || null]
+        );
+
+        const newCandId = insertResult.insertId;
+        const finalCandidateId = "CAND" + String(newCandId).padStart(4, "0");
+
+        // Update with the final sequential candidate_id
+        await pool.query(
+          `UPDATE candidate SET candidate_id = ? WHERE cand_id = ?`,
+          [finalCandidateId, newCandId]
         );
 
         created.push({ name: `${firstName} ${lastName}`, email });
@@ -558,9 +576,11 @@ router.get(
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const offset = (page - 1) * limit;
+      const clientId = 1; // Default client id for mock auth
 
       const [countRows] = await pool.query(
-        `SELECT COUNT(*) as total FROM candidate WHERE is_delete = 0`
+        `SELECT COUNT(*) as total FROM candidate WHERE is_delete = 0 AND client_id = ?`,
+        [clientId]
       );
       const totalRecords = countRows[0].total;
       const totalPages = Math.ceil(totalRecords / limit);
@@ -585,10 +605,10 @@ router.get(
           'HR' AS created_by_role,
           '-' AS created_by_name
          FROM candidate
-         WHERE is_delete = 0
+         WHERE is_delete = 0 AND client_id = ?
          ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
-        [limit, offset]
+        [clientId, limit, offset]
       );
 
       return res.status(200).json({
@@ -653,7 +673,7 @@ router.patch(
       const { reason } = req.body;
 
       const [rows] = await pool.query(
-        "SELECT cand_id FROM candidate_master WHERE cand_id = ? AND is_delete = 0",
+        "SELECT cand_id FROM candidate WHERE cand_id = ? AND is_delete = 0",
         [id]
       );
 
@@ -665,7 +685,7 @@ router.patch(
       }
 
       await pool.query(
-        "UPDATE candidate_master SET case_status = 5, updated_at = NOW() WHERE cand_id = ?",
+        "UPDATE candidate SET verification_status = 5, updated_at = NOW() WHERE cand_id = ?",
         [id]
       );
 
@@ -721,7 +741,7 @@ router.patch(
       const { reason } = req.body;
 
       const [rows] = await pool.query(
-        "SELECT cand_id FROM candidate_master WHERE cand_id = ? AND is_delete = 0",
+        "SELECT cand_id FROM candidate WHERE cand_id = ? AND is_delete = 0",
         [id]
       );
 
@@ -733,7 +753,7 @@ router.patch(
       }
 
       await pool.query(
-        "UPDATE candidate_master SET case_status = 6, updated_at = NOW() WHERE cand_id = ?",
+        "UPDATE candidate SET verification_status = 3, updated_at = NOW() WHERE cand_id = ?",
         [id]
       );
 
@@ -779,10 +799,10 @@ router.get("/:id/personal", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query(
-      `SELECT cand_id, case_id, first_name, last_name, email, phone,
+      `SELECT cand_id, candidate_id AS case_id, candidate_first_name AS first_name, candidate_last_name AS last_name, candidate_email AS email, candidate_mobile AS phone,
               date_of_birth, gender, father_name, nationality,
-              job_function, tag, case_status, created_at, updated_at
-       FROM candidate_master
+              candidate_function AS job_function, candidate_tag AS tag, verification_status AS case_status, created_at, updated_at
+       FROM candidate
        WHERE cand_id = ? AND is_delete = 0`,
       [id]
     );

@@ -1,0 +1,16 @@
+﻿Candidate ID,Name,Email,Phone,Assigned HR,Function,Tag,Status,Date
+CAND0015,Abhilash Rath,abinashpatri5@gmail.com,7735187788,Abinash Patri,it,testing,Pending,29 Jun 2026
+CAND0014,Test User,test12345@email.com,9876543212,Abinash Patri,Dev,A,Pending,29 Jun 2026
+CAND0013,Raghu Nanda,raghu@gmail.com,5465486486,Monkey D Luffy,non-it,testing,Pending,24 Jun 2026
+CAND0012,Rahul Mukharjy,mukh@gmail.com,6545949494,Abinash Patri,IT,g,Rejected,24 Jun 2026
+CAND-07544517,Abinash Patri,abinashpatri5@gmail.com,7735147053,Abinash Patri,IT,Apr Batch,In Progress,24 Jun 2026
+CAND0001,Rahul Sharma,rahul@gmail.com,9876543210,Monkey D Lufffy,Software Engineer,L1,In Progress,21 Jun 2026
+CAND0002,Priya Nair,priya@gmail.com,9876543211,Priya Nair,Business Analyst,Priority,Rejected,21 Jun 2026
+CAND0003,Amit Verma,amit@gmail.com,9876543212,Priya Nair,Project Manager,Lateral,Rejected,21 Jun 2026
+CAND0004,Sneha Reddy,sneha@gmail.com,9876543213,Priya Nair,HR Executive,Campus,On Hold,21 Jun 2026
+CAND0005,Karan Mehta,karan@gmail.com,9876543214,Amit Verma,QA Engineer,Experienced,Rejected,21 Jun 2026
+CAND0006,Neha Gupta,neha@gmail.com,9876543215,Amit Verma,UI Designer,Referral,Complete,21 Jun 2026
+CAND0007,Arjun Singh,arjun@gmail.com,9876543216,Sneha Reddy,DevOps Engineer,Urgent,In Progress,21 Jun 2026
+CAND0008,Meera Das,meera@gmail.com,9876543217,Sneha Reddy,Data Analyst,Priority,On Hold,21 Jun 2026
+CAND0009,Vikram Patel,vikram@gmail.com,9876543218,Karan Mehta,Network Engineer,L2,On Hold,21 Jun 2026
+CAND0010,Pooja Iyer,pooja@gmail.com,9876543219,Karan Mehta,Finance Analyst,Rehire,Complete,21 Jun 2026
