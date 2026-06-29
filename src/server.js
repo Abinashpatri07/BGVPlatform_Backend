@@ -12,12 +12,13 @@ import hrRoutes from "./routes/superadminroute/hrRoutes.js";
 import vendorRoutes from "./routes/superadminroute/vendorRoutes.js";
 import candidateRoutes from "./routes/superadminroute/candidateRoutes.js";
 import auditRoutes from "./routes/superadminroute/auditRoutes.js";
+import dashboardRoutes from "./routes/superadminroute/dashboardRoutes.js";
 
 // ───────── CLIENT ADMIN ─────────
 import clientAdminHrRoutes from "./routes/clientadminroute/hrRoutes.js";
 import clientAdminCandidateRoutes from "./routes/clientadminroute/candidateRoutes.js";
-import clientAdminAuthRoutes from
-"./routes/clientadminroute/authRoutes.js";
+import clientAdminAuthRoutes from "./routes/clientadminroute/authRoutes.js";
+import clientAdminDashboardRoutes from "./routes/clientadminroute/dashboardRoutes.js";
 
 // ───────── HR ─────────
 import hrAuthRoutes from "./routes/hrroute/authRoutes.js";
@@ -57,8 +58,8 @@ app.use("/api/hr", hrRoutes);
 app.use("/api/vendor", vendorRoutes);
 
 app.use("/api/candidate", candidateRoutes);
-
 app.use("/api/audit", auditRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 /* ───────── CLIENT ADMIN ROUTES ───────── */
 
@@ -71,6 +72,7 @@ app.use(
   "/api/client-admin/auth",
   clientAdminAuthRoutes
 );
+app.use("/api/client-admin/dashboard", clientAdminDashboardRoutes);
 
 /* ───────── HR ROUTES ───────── */
 

@@ -196,7 +196,7 @@ router.get("/get-all-clients", async (req, res) => {
       `SELECT
          COUNT(*) AS total,
          SUM(CASE WHEN is_suspend != 1 AND is_active = 1 THEN 1 ELSE 0 END) AS active,
-         SUM(CASE WHEN is_suspend != 1 AND is_active = 2 THEN 1 ELSE 0 END) AS inactive,
+         SUM(CASE WHEN is_suspend != 1 AND is_active != 1 THEN 1 ELSE 0 END) AS inactive,
          SUM(CASE WHEN is_suspend = 1 THEN 1 ELSE 0 END) AS suspended
        FROM client_master
        WHERE is_delete = 0`

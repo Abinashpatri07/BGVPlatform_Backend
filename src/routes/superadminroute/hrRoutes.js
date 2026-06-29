@@ -91,8 +91,8 @@ router.post(
       /* ── INSERT ── */
       const [result] = await pool.query(
         `INSERT INTO client_user_master
-          (empid, firstname, lastname, email, mobile, role_name, role_id, password, client_id, is_active, is_delete, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, 0, NOW(), NOW())`,
+          (empid, firstname, lastname, email, mobile, role_name, role_id, password, client_id, created_by, is_active, is_delete, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 1, 0, NOW(), NOW())`,
         [
           empId.trim().toUpperCase(),
           firstName.trim(),
