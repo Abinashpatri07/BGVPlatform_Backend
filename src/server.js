@@ -25,6 +25,9 @@ import hrAuthRoutes from "./routes/hrroute/authRoutes.js";
 import hrCandidateRoutes from "./routes/hrroute/candidateRoutes.js";
 import hrTableRoutes from "./routes/hrroute/tableRoutes.js";
 
+// ───────── OCR ─────────
+import ocrRoutes from "./routes/ocrRoutes.js";
+
 dotenv.config();
 
 import pool from "./config/db.js";
@@ -79,6 +82,9 @@ app.use("/api/client-admin/dashboard", clientAdminDashboardRoutes);
 app.use("/api/hr/auth", hrAuthRoutes);
 app.use("/api/candidates", hrCandidateRoutes);
 app.use("/api/candidates/table", hrTableRoutes);
+
+/* ───────── OCR ROUTES ───────── */
+app.use("/api/ocr", ocrRoutes);
 
 /* TEST */
 app.get("/", (req, res) => {
