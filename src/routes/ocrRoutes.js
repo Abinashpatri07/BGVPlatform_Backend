@@ -46,8 +46,8 @@ router.post('/extract', upload.single('file'), async (req, res) => {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669",
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841",
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -69,8 +69,8 @@ router.get('/status/:request_id', async (req, res) => {
     const response = await fetch(`https://eve.idfy.com/v3/tasks?request_id=${request_id}`, {
       method: "GET",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669"
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841"
       }
     });
 
@@ -102,8 +102,8 @@ router.post('/aadhaar/generate-otp', express.json(), async (req, res) => {
     const response = await fetch("https://eve.idfy.com/v3/tasks/async/verify_with_source/ind_aadhaar", {
       method: "POST",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669",
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841",
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -136,8 +136,8 @@ router.post('/aadhaar/verify-otp', express.json(), async (req, res) => {
     const response = await fetch("https://eve.idfy.com/v3/tasks/async/verify_with_source/ind_aadhaar_otp", {
       method: "POST",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669",
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841",
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -173,8 +173,8 @@ router.post('/verify-pan', express.json(), async (req, res) => {
     const response = await fetch("https://eve.idfy.com/v3/tasks/async/verify_with_source/ind_pan", {
       method: "POST",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669",
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841",
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -210,8 +210,8 @@ router.post('/verify-dl', express.json(), async (req, res) => {
     const response = await fetch("https://eve.idfy.com/v3/tasks/async/verify_with_source/ind_driving_license", {
       method: "POST",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669",
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841",
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -238,8 +238,8 @@ router.post('/verify-voter', express.json(), async (req, res) => {
     const response = await fetch("https://eve.idfy.com/v3/tasks/async/verify_with_source/ind_voter_id", {
       method: "POST",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669",
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841",
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -269,8 +269,8 @@ router.post('/verify-passport', express.json(), async (req, res) => {
     const response = await fetch("https://eve.idfy.com/v3/tasks/async/verify_with_source/ind_passport", {
       method: "POST",
       headers: {
-        "account-id": "99e89415cf22/eb681f49-3240-44a7-9a7d-e5bf7619e607",
-        "api-key": "1e071554-8681-4f0d-b09e-814b9450e669",
+        "account-id": "b61986deab6c/4297bc7e-dea5-422b-b1bf-9255dbeb9736",
+        "api-key": "7de4e754-67c1-4d7f-963a-5a8203ceb841",
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
