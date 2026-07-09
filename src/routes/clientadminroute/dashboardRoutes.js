@@ -21,7 +21,7 @@ router.get("/metrics", async (req, res) => {
          SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as \`active\`,
          SUM(CASE WHEN is_active = 2 THEN 1 ELSE 0 END) as \`inactive\`,
          SUM(CASE WHEN is_active = 3 THEN 1 ELSE 0 END) as \`terminated\`
-       FROM client_user_master 
+       FROM users 
        WHERE client_id = ? AND is_delete = 0 AND role_name IN ('HR', 'HR 2', 'HR Executive', 'HR Manager', 'HR User')`,
       [clientId]
     );
@@ -60,8 +60,8 @@ router.get("/metrics", async (req, res) => {
 
     // 3. Recent Profiles (HR + Candidates)
     const [recentHrRows] = await pool.query(
-      `SELECT firstname, lastname, created_at, 'HR' as role 
-       FROM client_user_master 
+      `SELECT first_name as firstname, last_name as lastname, created_at, 'HR' as role 
+       FROM users 
        WHERE client_id = ? 
        ORDER BY created_at DESC LIMIT 5`,
       [clientId]

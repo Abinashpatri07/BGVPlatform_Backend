@@ -10,6 +10,9 @@ import validateCreateCandidate from
 import pool from "../../config/db.js";
 
 const router = express.Router();
+import apiLogger from "../../middleware/apiLogger.js";
+
+router.use(apiLogger({ sourceService: "HR Portal", destinationService: "Backend API" }));
 
 /* ───────────────── STORAGE ───────────────── */
 

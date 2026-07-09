@@ -8,6 +8,9 @@ import validateUpdateCandidate from
 "../../middleware/superadmin/validateUpdateCandidate.js";
 
 const router = express.Router();
+import apiLogger from "../../middleware/apiLogger.js";
+
+router.use(apiLogger({ sourceService: "Super Admin Portal", destinationService: "Backend API" }));
 
 /**
  * @swagger
@@ -34,10 +37,10 @@ router.get("/get-candidate/:id", async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT c.*, 
-              u.firstname AS hr_firstname,
-              u.lastname AS hr_lastname
+              u.first_name AS hr_firstname,
+              u.last_name AS hr_lastname
        FROM candidate c
-       LEFT JOIN client_user_master u ON c.assigned_userid = u.users_id
+       LEFT JOIN users u ON c.assigned_userid = u.users_id
        WHERE (c.candidate_id = ? OR c.cand_id = ?) AND c.is_delete = 0`,
       [id, id]
     );
@@ -181,7 +184,7 @@ router.get("/get-all", async (req, res) => {
           COALESCE(c.assigned_hr_lastname,  '') AS hr_last_name,
           COALESCE(cu.email, '')               AS hr_email
        FROM candidate c
-       LEFT JOIN client_user_master cu
+       LEFT JOIN users cu
               ON c.assigned_userid = cu.users_id
        ${where}
        ORDER BY c.created_at DESC
@@ -612,7 +615,7 @@ router.patch("/assign-hr/:id", async (req, res) => {
 
     /* ── FETCH HR DETAILS ── */
     const [hrResults] = await pool.query(
-      "SELECT firstname, lastname, email FROM client_user_master WHERE users_id = ? AND is_delete = 0",
+      "SELECT first_name as firstname, last_name as lastname, email FROM users WHERE users_id = ? AND is_delete = 0",
       [hrId]
     );
 
@@ -693,7 +696,7 @@ router.patch("/bulk-assign-hr", async (req, res) => {
 
     /* ── FETCH HR DETAILS ── */
     const [hrResults] = await pool.query(
-      "SELECT firstname, lastname, email FROM client_user_master WHERE users_id = ? AND is_delete = 0",
+      "SELECT first_name as firstname, last_name as lastname, email FROM users WHERE users_id = ? AND is_delete = 0",
       [hrId]
     );
 

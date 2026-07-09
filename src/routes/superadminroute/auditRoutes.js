@@ -42,7 +42,7 @@ router.get("/", async (req, res) => {
 
     let baseQuery = `
       FROM audit_logs a
-      LEFT JOIN client_user_master u ON a.user_id = u.users_id
+      LEFT JOIN users u ON a.user_id = u.users_id
       WHERE 1=1
     `;
     
