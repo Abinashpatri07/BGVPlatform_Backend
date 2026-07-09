@@ -3,17 +3,17 @@ import nodemailer from "nodemailer";
 export const sendEmail = async ({ to, subject, text, html }) => {
   try {
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.zoho.in",
-      port: process.env.SMTP_PORT || 465,
-      secure: true, // true for 465, false for other ports
+      host: process.env.SMTP_HOST || "smtp.hostinger.com",
+      port: process.env.SMTP_PORT || 587,
+      secure: process.env.SMTP_PORT == 465, // true for 465, false for other ports
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: process.env.SMTP_USER || "info@dqnex.com",
+        pass: process.env.SMTP_PASS || "Dqnex@1234",
       },
     });
 
     const info = await transporter.sendMail({
-      from: `"BGV Platform" <${process.env.SMTP_USER}>`,
+      from: `"BGV Platform" <${process.env.SMTP_USER || "info@dqnex.com"}>`,
       to,
       subject,
       text,

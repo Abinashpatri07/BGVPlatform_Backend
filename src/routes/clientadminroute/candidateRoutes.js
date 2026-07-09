@@ -1,8 +1,11 @@
 import express from "express";
+import crypto from "crypto";
+import bcrypt from "bcrypt";
 import { v4 as uuidv4 } from "uuid";
 import validateCandidateAction from "../../middleware/clientadmin/validateCandidateAction.js";
 import validateCreateCandidate from "../../middleware/clientadmin/validateCreateCandidate.js";
 import pool from "../../config/db.js";
+import { sendEmail } from "../../utils/sendEmail.js";
 import multer from "multer";
 import * as XLSX from "xlsx";
 
@@ -11,6 +14,53 @@ const router = express.Router();
 import apiLogger from "../../middleware/apiLogger.js";
 
 router.use(apiLogger({ sourceService: "Client Admin Portal", destinationService: "Backend API" }));
+
+const sendCandidateWelcomeEmailHelper = (candidateName, candidateEmail, setupToken = null) => {
+  const companyName = "Dqnex";
+  const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+  const portalUrl = setupToken ? `${baseUrl}/setup-password?token=${setupToken}` : `${baseUrl}/`;
+  const supportEmail = "info@dqnex.com";
+  const supportPhone = "+91-XXXXXXXXXX";
+
+  const emailHtml = `
+    <p>Dear ${candidateName},</p>
+    <p>Welcome!</p>
+    <p>Your background verification process has been initiated by <b>${companyName}</b>. To proceed, please complete your onboarding through our Background Verification Portal.</p>
+    <p><b>What you need to do:</b></p>
+    <ul>
+      <li>Log in using the link below to set your password and access the portal.</li>
+      <li>Verify your email address using the OTP sent to your registered email.</li>
+      <li>Complete your personal and employment details.</li>
+      <li>Upload the required documents (such as Aadhaar, PAN, educational certificates, and other requested documents).</li>
+      <li>Review all the information carefully and submit your application.</li>
+    </ul>
+    <p><b>Portal Setup Link:</b> <a href="${portalUrl}">${portalUrl}</a></p>
+    <p><b>Login Details:</b></p>
+    <ul>
+      <li><b>Email:</b> ${candidateEmail}</li>
+    </ul>
+    <p><b>Important Notes:</b></p>
+    <ul>
+      <li>Please ensure all information provided is accurate and matches your official documents.</li>
+      <li>Upload clear, legible copies of all required documents.</li>
+      <li>Incomplete or incorrect information may delay your verification process.</li>
+      <li>If additional information is required, you will receive a notification via email.</li>
+    </ul>
+    <p>If you experience any issues while accessing the portal or completing your profile, please contact our support team:</p>
+    <p><b>Email:</b> <a href="mailto:${supportEmail}">${supportEmail}</a><br>
+    <b>Phone:</b> ${supportPhone}</p>
+    <p>Thank you for your cooperation. We look forward to completing your background verification successfully.</p>
+    <p>Best regards,<br>
+    <b>Background Verification Team</b></p>
+  `;
+
+  return sendEmail({
+    to: candidateEmail,
+    subject: "Welcome to Background Verification Portal",
+    text: `Dear ${candidateName},\n\nWelcome!\n\nYour background verification process has been initiated by ${companyName}. To proceed, please log in at ${portalUrl}\n\nLogin Email: ${candidateEmail}\n\nBest regards,\nBackground Verification Team`,
+    html: emailHtml,
+  }).catch(err => console.error("Error sending welcome email in background:", err));
+};
 
 /**
  * @swagger
@@ -153,6 +203,33 @@ router.post(
         `UPDATE candidate SET candidate_id = ? WHERE cand_id = ?`,
         [finalCandidateId, newCandId]
       );
+
+      // Generate a setup token
+      const setupToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+      // Insert into users table
+      const dummyPassword = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
+      try {
+        await pool.execute(
+          `INSERT INTO users (first_name, last_name, username, email, role_id, role_name, password, password_reset_token, password_reset_expiry, is_active, is_delete)
+           VALUES (?, ?, ?, ?, 4, 'candidate', ?, ?, ?, 1, 0)`,
+          [firstName.trim(), lastName.trim(), email.trim().toLowerCase(), email.trim().toLowerCase(), dummyPassword, setupToken, tokenExpiry]
+        );
+      } catch (userErr) {
+        if (userErr.code === "ER_DUP_ENTRY") {
+          // If user exists, just update the token
+          await pool.execute(
+            `UPDATE users SET password_reset_token = ?, password_reset_expiry = ? WHERE email = ?`,
+            [setupToken, tokenExpiry, email.trim().toLowerCase()]
+          );
+        } else {
+          throw userErr;
+        }
+      }
+
+      // Send Welcome Email automatically on creation
+      sendCandidateWelcomeEmailHelper(`${firstName.trim()} ${lastName.trim()}`.trim(), email.trim().toLowerCase(), setupToken);
 
       return res.status(201).json({
         success: true,
@@ -1022,5 +1099,245 @@ router.get(
 
   }
 );
+
+/**
+ * @swagger
+ * /api/client-admin/candidate/send-welcome-email/{candId}:
+ *   post:
+ *     summary: Send a welcome email to a candidate (Client Admin)
+ *     tags: [Client Admin - Candidate]
+ *     parameters:
+ *       - in: path
+ *         name: candId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Email sent successfully
+ *       404:
+ *         description: Candidate not found
+ *       500:
+ *         description: Server Error
+ */
+router.post("/send-welcome-email/:candId", async (req, res) => {
+  const { candId } = req.params;
+  try {
+    const [candidates] = await pool.query(
+      "SELECT candidate_first_name, candidate_last_name, candidate_email FROM candidate WHERE cand_id = ? AND is_delete = 0",
+      [candId]
+    );
+
+    if (candidates.length === 0) {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+
+    const candidate = candidates[0];
+    const candidateName = `${candidate.candidate_first_name} ${candidate.candidate_last_name}`.trim();
+    const candidateEmail = candidate.candidate_email;
+
+    // Fetch token from users table
+    const [users] = await pool.query(
+      "SELECT password_reset_token FROM users WHERE email = ? AND is_delete = 0",
+      [candidateEmail]
+    );
+    const setupToken = users.length > 0 ? users[0].password_reset_token : null;
+
+    // Send email asynchronously using helper
+    sendCandidateWelcomeEmailHelper(candidateName, candidateEmail, setupToken);
+
+    return res.status(200).json({ success: true, message: "Welcome email sent successfully." });
+  } catch (err) {
+    console.error("Send Welcome Email Error:", err);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
+  }
+});
+
+/**
+ * @swagger
+ * /api/client-admin/candidate/setup-info:
+ *   get:
+ *     summary: Get candidate setup info (email) by token
+ *     tags: [Candidate]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Success
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.get("/setup-info", async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ success: false, message: "Token is required." });
+  }
+
+  try {
+    const [users] = await pool.query(
+      "SELECT email FROM users WHERE password_reset_token = ? AND is_delete = 0",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired setup token." });
+    }
+
+    return res.status(200).json({ success: true, email: users[0].email });
+  } catch (err) {
+    console.error("Setup Info Error:", err);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+/**
+ * @swagger
+ * /api/client-admin/candidate/send-setup-otp:
+ *   post:
+ *     summary: Send OTP for password setup
+ *     tags: [Candidate]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: OTP sent successfully
+ */
+router.post("/send-setup-otp", async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ success: false, message: "Token is required." });
+  }
+
+  try {
+    const [users] = await pool.query(
+      "SELECT users_id, email, first_name FROM users WHERE password_reset_token = ? AND is_delete = 0",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired token." });
+    }
+
+    const user = users[0];
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+    await pool.query(
+      "UPDATE users SET last_otp = ?, otp_expiry = ? WHERE users_id = ?",
+      [otp, otpExpiry, user.users_id]
+    );
+
+    // Send email
+    sendEmail({
+      to: user.email,
+      subject: "Your OTP for Password Setup - BGV Platform",
+      text: `Hello ${user.first_name},\n\nYour OTP to set your password is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nThank you.`,
+      html: `
+        <h3>Password Setup OTP</h3>
+        <p>Hello <b>${user.first_name}</b>,</p>
+        <p>Your OTP to set your new password is: <b style="font-size: 20px; color: #4F46E5;">${otp}</b></p>
+        <p>This OTP is valid for 10 minutes.</p>
+        <br/>
+        <p>Thank you,<br/>BGV Platform Team</p>
+      `,
+    }).catch(err => console.error("Error sending OTP email:", err));
+
+    return res.status(200).json({ success: true, message: "OTP sent to your email." });
+  } catch (err) {
+    console.error("Send Setup OTP Error:", err);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+/**
+ * @swagger
+ * /api/client-admin/candidate/set-password:
+ *   post:
+ *     summary: Set password for a candidate with OTP
+ *     tags: [Candidate]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - otp
+ *               - password
+ *             properties:
+ *               token:
+ *                 type: string
+ *               otp:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password set successfully
+ *       400:
+ *         description: Invalid token or OTP
+ *       500:
+ *         description: Server error
+ */
+router.post("/set-password", async (req, res) => {
+  const { token, otp, password } = req.body;
+
+  if (!token || !otp || !password) {
+    return res.status(400).json({ success: false, message: "Token, OTP, and password are required." });
+  }
+
+  try {
+    // Verify token
+    const [users] = await pool.query(
+      "SELECT users_id, last_otp, otp_expiry FROM users WHERE password_reset_token = ? AND is_delete = 0",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired token." });
+    }
+
+    const user = users[0];
+
+    // Verify OTP
+    if (!user.last_otp || user.last_otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP." });
+    }
+
+    if (new Date() > new Date(user.otp_expiry)) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update password and clear token and OTP
+    await pool.query(
+      "UPDATE users SET password = ?, password_reset_token = NULL, password_reset_expiry = NULL, last_otp = NULL, otp_expiry = NULL WHERE users_id = ?",
+      [hashedPassword, user.users_id]
+    );
+
+    return res.status(200).json({ success: true, message: "Password has been set successfully. You can now login." });
+  } catch (err) {
+    console.error("Set Password Error:", err);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
+  }
+});
 
 export default router;

@@ -80,16 +80,13 @@ router.post("/login", validateLogin, async (req, res) => {
     console.log(`\n\n=== [DEVELOPMENT] OTP for ${email} is: ${otp} ===\n\n`);
     
     // Send email
-    const emailSent = await sendEmail({
+    // Send email asynchronously in background
+    sendEmail({
       to: email,
       subject: "Client Admin Portal - 2FA Login OTP",
       text: `Your OTP for login is: ${otp}. It is valid for 5 minutes.`,
       html: `<h3>Client Admin Portal Login</h3><p>Your OTP for login is: <b>${otp}</b>.</p><p>It is valid for 5 minutes.</p>`,
-    });
-
-    if (!emailSent) {
-      console.warn("Failed to send OTP email. Please check SMTP configuration.");
-    }
+    }).catch(err => console.warn("Background email error:", err));
     
     await pool.query(
       "UPDATE users SET login_attempt_count = 0, locked_until = NULL, last_otp = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 5 MINUTE) WHERE users_id = ?",
