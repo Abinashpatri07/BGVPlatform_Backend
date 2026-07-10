@@ -1136,12 +1136,16 @@ router.post("/send-welcome-email/:candId", async (req, res) => {
     const candidateName = `${candidate.candidate_first_name} ${candidate.candidate_last_name}`.trim();
     const candidateEmail = candidate.candidate_email;
 
-    // Fetch token from users table
-    const [users] = await pool.query(
-      "SELECT password_reset_token FROM users WHERE email = ? AND is_delete = 0",
-      [candidateEmail]
+    // Always generate a fresh token when resending welcome email
+    const { v4: uuidv4 } = await import("uuid");
+    const setupToken = uuidv4();
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    // Update token in users table
+    await pool.query(
+      "UPDATE users SET password_reset_token = ?, password_reset_expiry = ? WHERE email = ? AND is_delete = 0",
+      [setupToken, tokenExpiry, candidateEmail]
     );
-    const setupToken = users.length > 0 ? users[0].password_reset_token : null;
 
     // Send email asynchronously using helper
     sendCandidateWelcomeEmailHelper(candidateName, candidateEmail, setupToken);
@@ -1243,7 +1247,7 @@ router.post("/send-setup-otp", async (req, res) => {
     );
 
     // Send email
-    sendEmail({
+    const emailSent = await sendEmail({
       to: user.email,
       subject: "Your OTP for Password Setup - BGV Platform",
       text: `Hello ${user.first_name},\n\nYour OTP to set your password is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nThank you.`,
@@ -1255,7 +1259,11 @@ router.post("/send-setup-otp", async (req, res) => {
         <br/>
         <p>Thank you,<br/>BGV Platform Team</p>
       `,
-    }).catch(err => console.error("Error sending OTP email:", err));
+    });
+
+    if (!emailSent) {
+      return res.status(500).json({ success: false, message: "Failed to send OTP email. Please try again." });
+    }
 
     return res.status(200).json({ success: true, message: "OTP sent to your email." });
   } catch (err) {
