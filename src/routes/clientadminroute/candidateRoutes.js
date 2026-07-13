@@ -1141,10 +1141,17 @@ router.post("/send-welcome-email/:candId", async (req, res) => {
     const setupToken = uuidv4();
     const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Update token in users table
+    // Get candidate name parts
+    const firstName = candidate.candidate_first_name || "";
+    const lastName = candidate.candidate_last_name || "";
+
+    // INSERT user if not exists, otherwise UPDATE token
+    const dummyPassword = `locked_${uuidv4()}`;
     await pool.query(
-      "UPDATE users SET password_reset_token = ?, password_reset_expiry = ? WHERE email = ? AND is_delete = 0",
-      [setupToken, tokenExpiry, candidateEmail]
+      `INSERT INTO users (first_name, last_name, username, email, role_id, role_name, password, password_reset_token, password_reset_expiry, is_active, is_delete)
+       VALUES (?, ?, ?, ?, 4, 'candidate', ?, ?, ?, 1, 0)
+       ON DUPLICATE KEY UPDATE password_reset_token = VALUES(password_reset_token), password_reset_expiry = VALUES(password_reset_expiry)`,
+      [firstName, lastName, candidateEmail, candidateEmail, dummyPassword, setupToken, tokenExpiry]
     );
 
     // Send email asynchronously using helper
