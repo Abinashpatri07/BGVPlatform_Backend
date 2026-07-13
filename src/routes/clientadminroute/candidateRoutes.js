@@ -1,6 +1,6 @@
 import express from "express";
 import crypto from "crypto";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import validateCandidateAction from "../../middleware/clientadmin/validateCandidateAction.js";
 import validateCreateCandidate from "../../middleware/clientadmin/validateCreateCandidate.js";
