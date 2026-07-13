@@ -27,6 +27,7 @@ import hrTableRoutes from "./routes/hrroute/tableRoutes.js";
 
 // ───────── CANDIDATE ─────────
 import candidateSubmissionRoutes from "./routes/candidateroute/submissionRoutes.js";
+import candidateAuthRoutes from "./routes/candidateroute/authRoutes.js";
 
 // ───────── OCR ─────────
 import ocrRoutes from "./routes/ocrRoutes.js";
@@ -88,6 +89,7 @@ app.use("/api/candidates/table", hrTableRoutes);
 
 /* ───────── CANDIDATE SUBMISSION ROUTES ───────── */
 app.use("/api/candidate/submit", candidateSubmissionRoutes);
+app.use("/api/candidate/auth", candidateAuthRoutes);
 
 /* ───────── OCR ROUTES ───────── */
 app.use("/api/ocr", ocrRoutes);
