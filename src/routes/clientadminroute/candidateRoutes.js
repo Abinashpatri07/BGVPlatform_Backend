@@ -142,6 +142,7 @@ router.post(
       email,
       clientAdminId,
       jobFunction,
+      candidateExperience,
       tag,
     } = req.body;
 
@@ -180,9 +181,9 @@ router.post(
 
       const [result] = await pool.execute(
         `INSERT INTO candidate
-          (candidate_id, client_id, created_by_users, candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_tag, verification_status, is_active, is_delete, created_at, updated_at)
+          (candidate_id, client_id, created_by_users, candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_experience, candidate_tag, verification_status, is_active, is_delete, created_at, updated_at)
          VALUES
-          (?, 1, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
+          (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
         [
           tempId,
           clientAdminId || null,
@@ -191,6 +192,7 @@ router.post(
           email.trim().toLowerCase(),
           phone.trim(),
           jobFunction || null,
+          candidateExperience ? Number(candidateExperience) : 1,
           tag || null,
         ]
       );

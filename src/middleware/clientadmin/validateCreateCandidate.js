@@ -9,6 +9,7 @@ const validateCreateCandidate = (req, res, next) => {
     email,
     clientAdminId,   // logged-in client admin ka users_id
     cmId,            // client company ka cm_id
+    candidateExperience,
   } = req.body;
 
   const errors = {};
