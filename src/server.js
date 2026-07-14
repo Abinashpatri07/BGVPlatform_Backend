@@ -54,6 +54,15 @@ app.get("/api-docs.json", (req, res) => {
   res.send(swaggerSpec);
 });
 
+/* ───────── CANDIDATE SUBMISSION ROUTES (Must be before Super Admin /api/candidate) ───────── */
+app.use("/api/candidate/submit", candidateSubmissionRoutes);
+app.use("/api/candidate/auth", candidateAuthRoutes);
+
+/* ───────── HR ROUTES (Must be before Super Admin /api/hr) ───────── */
+app.use("/api/hr/auth", hrAuthRoutes);
+app.use("/api/candidates", hrCandidateRoutes);
+app.use("/api/candidates/table", hrTableRoutes);
+
 /* ───────── SUPER ADMIN ROUTES ───────── */
 
 app.use("/api/auth", authRoutes);
@@ -81,15 +90,9 @@ app.use(
 );
 app.use("/api/client-admin/dashboard", clientAdminDashboardRoutes);
 
-/* ───────── HR ROUTES ───────── */
 
-app.use("/api/hr/auth", hrAuthRoutes);
-app.use("/api/candidates", hrCandidateRoutes);
-app.use("/api/candidates/table", hrTableRoutes);
 
-/* ───────── CANDIDATE SUBMISSION ROUTES ───────── */
-app.use("/api/candidate/submit", candidateSubmissionRoutes);
-app.use("/api/candidate/auth", candidateAuthRoutes);
+
 
 /* ───────── OCR ROUTES ───────── */
 app.use("/api/ocr", ocrRoutes);
