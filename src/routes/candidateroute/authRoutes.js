@@ -20,9 +20,12 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and password are required." });
     }
 
-    // Find user with role = candidate
+    // Find user with role = candidate and get candidate experience
     const [rows] = await pool.query(
-      "SELECT * FROM users WHERE email = ? AND is_delete = 0 AND is_active = 1",
+      `SELECT u.*, c.candidate_experience 
+       FROM users u
+       LEFT JOIN candidate c ON u.email = c.candidate_email
+       WHERE u.email = ? AND u.is_delete = 0 AND u.is_active = 1`,
       [email.trim().toLowerCase()]
     );
 
@@ -62,6 +65,7 @@ router.post("/login", async (req, res) => {
         name: `${user.first_name} ${user.last_name}`.trim(),
         email: user.email,
         role: user.role_name,
+        candidate_experience: user.candidate_experience || 1,
       },
     });
   } catch (err) {
