@@ -261,8 +261,8 @@ router.post('/verify-passport', express.json(), async (req, res) => {
       task_id: "passport_verify_" + Date.now(),
       group_id: "bgv_group",
       data: { 
-        passport_file_number: fileNumber,
-        date_of_birth: dob || ""
+        file_number: fileNumber,
+        dob: dob || ""
       }
     };
 

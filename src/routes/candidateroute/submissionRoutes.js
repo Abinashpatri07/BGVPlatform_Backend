@@ -133,4 +133,42 @@ router.post("/id-documents", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/candidate/submit/uan:
+ *   post:
+ *     summary: Submit UAN
+ *     tags: [Candidate Submission]
+ */
+router.post("/uan", async (req, res) => {
+  try {
+    const { cand_id = 1, has_uan, uan_number } = req.body;
+
+    if (has_uan && !uan_number) {
+      return res.status(400).json({ error: "UAN number is required if candidate has UAN" });
+    }
+
+    const query = `
+      INSERT INTO candidate_identity 
+      (cand_id, candidate_id, client_id, cand_iden_type, iden_verification_status, uan_number) 
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+    
+    // doc_type 6 = UAN, status 1 = Pending
+    await pool.query(query, [
+      cand_id, 
+      "CAND-" + cand_id, 
+      1, 
+      6, 
+      1, 
+      has_uan ? uan_number : null
+    ]);
+
+    res.status(200).json({ message: "UAN saved successfully" });
+  } catch (error) {
+    console.error("Submit UAN Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+
 export default router;
