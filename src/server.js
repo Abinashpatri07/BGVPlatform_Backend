@@ -25,6 +25,9 @@ import hrAuthRoutes from "./routes/hrroute/authRoutes.js";
 import hrCandidateRoutes from "./routes/hrroute/candidateRoutes.js";
 import hrTableRoutes from "./routes/hrroute/tableRoutes.js";
 
+// ───────── VENDOR ─────────
+import vendorAuthRoutes from "./routes/vendorroute/authRoutes.js";
+
 // ───────── CANDIDATE ─────────
 import candidateSubmissionRoutes from "./routes/candidateroute/submissionRoutes.js";
 import candidateAuthRoutes from "./routes/candidateroute/authRoutes.js";
@@ -89,6 +92,9 @@ app.use(
   clientAdminAuthRoutes
 );
 app.use("/api/client-admin/dashboard", clientAdminDashboardRoutes);
+
+/* ───────── VENDOR ROUTES ───────── */
+app.use("/api/vendor/auth", vendorAuthRoutes);
 
 
 
