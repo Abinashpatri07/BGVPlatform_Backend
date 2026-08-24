@@ -19,6 +19,7 @@ import clientAdminHrRoutes from "./routes/clientadminroute/hrRoutes.js";
 import clientAdminCandidateRoutes from "./routes/clientadminroute/candidateRoutes.js";
 import clientAdminAuthRoutes from "./routes/clientadminroute/authRoutes.js";
 import clientAdminDashboardRoutes from "./routes/clientadminroute/dashboardRoutes.js";
+import clientAdminBillingRoutes from "./routes/clientadminroute/billingRoutes.js";
 
 // ───────── HR ─────────
 import hrAuthRoutes from "./routes/hrroute/authRoutes.js";
@@ -92,6 +93,7 @@ app.use(
   clientAdminAuthRoutes
 );
 app.use("/api/client-admin/dashboard", clientAdminDashboardRoutes);
+app.use("/api/client-admin/billing", clientAdminBillingRoutes);
 
 /* ───────── VENDOR ROUTES ───────── */
 app.use("/api/vendor/auth", vendorAuthRoutes);
