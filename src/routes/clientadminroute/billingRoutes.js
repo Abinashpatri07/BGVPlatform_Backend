@@ -247,4 +247,151 @@ router.post("/webhook", async (req, res) => {
   }
 });
 
+// GET Purchase History
+router.get("/history", async (req, res) => {
+  try {
+    const clientId = 1; // Mock auth
+
+    // 1. Get stats
+    const [ledgerRows] = await pool.query(
+      `SELECT 
+        SUM(credit_in) as total_credits, 
+        SUM(credit_out) as consumed_credits 
+       FROM billing_credit_ledger WHERE client_id = ?`,
+       [clientId]
+    );
+    
+    const [latestLedger] = await pool.query(
+      "SELECT balance_after FROM billing_credit_ledger WHERE client_id = ? ORDER BY credit_ledger_id DESC LIMIT 1",
+      [clientId]
+    );
+
+    const [invoiceCountRows] = await pool.query(
+      "SELECT COUNT(*) as count FROM billing_invoice WHERE client_id = ?",
+      [clientId]
+    );
+
+    const totalCredits = ledgerRows[0]?.total_credits || 0;
+    const consumedCredits = ledgerRows[0]?.consumed_credits || 0;
+    const availableCredits = latestLedger.length > 0 ? latestLedger[0].balance_after : 0;
+    const totalInvoice = invoiceCountRows[0]?.count || 0;
+
+    // 2. Get invoices
+    const [invoicesRows] = await pool.query(
+      `SELECT 
+        invoice_number, 
+        invoice_date, 
+        package_name, 
+        total_amount, 
+        payment_status 
+       FROM billing_invoice 
+       WHERE client_id = ? 
+       ORDER BY invoice_date DESC`,
+       [clientId]
+    );
+
+    const invoices = invoicesRows.map(inv => {
+      // Format date like '01 Jul 2025'
+      const dateObj = new Date(inv.invoice_date);
+      const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      
+      let status = "Pending";
+      if (inv.payment_status === "SUCCESS" || inv.payment_status === "PAID") status = "Paid";
+      else if (inv.payment_status === "FAILED") status = "Failed";
+
+      return {
+        invoice: `#${inv.invoice_number}`,
+        date: dateStr,
+        description: `${inv.package_name} Package`,
+        subdescription: "package purchase",
+        status: status,
+        amount: `₹${parseFloat(inv.total_amount).toLocaleString('en-IN')}`
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalCredits,
+        consumeCredits: consumedCredits,
+        availableCredits,
+        totalInvoice
+      },
+      invoices
+    });
+  } catch (error) {
+    console.error("Error fetching history:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+
+// GET Usage Logs
+router.get("/usage-logs", async (req, res) => {
+  try {
+    const clientId = 1;
+
+    // 1. Get stats
+    const [ledgerRows] = await pool.query(
+      `SELECT SUM(credit_in) as total_credits, SUM(credit_out) as consumed_credits FROM billing_credit_ledger WHERE client_id = ?`,
+       [clientId]
+    );
+    const [latestLedger] = await pool.query(
+      "SELECT balance_after FROM billing_credit_ledger WHERE client_id = ? ORDER BY credit_ledger_id DESC LIMIT 1",
+      [clientId]
+    );
+
+    const totalCredit = ledgerRows[0]?.total_credits || 0;
+    const consumedCredit = ledgerRows[0]?.consumed_credits || 0;
+    const availableCredit = latestLedger.length > 0 ? latestLedger[0].balance_after : 0;
+
+    // 2. Get usage logs
+    const [usageRows] = await pool.query(
+      `SELECT 
+        transaction_id, 
+        usage_date, 
+        candidate_id, 
+        package_id, 
+        units_consumed, 
+        usage_status 
+       FROM billing_usage_log 
+       WHERE client_id = ? 
+       ORDER BY usage_date DESC`,
+       [clientId]
+    );
+
+    // Normally we'd join with candidate and package tables to get names.
+    // For now, we will map candidate_id and package_id to some placeholders or skip if null.
+    const logs = usageRows.map(log => {
+      const dateObj = new Date(log.usage_date);
+      const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      
+      let status = "Pending";
+      if (log.usage_status === "SUCCESS") status = "Paid"; // using Paid as frontend component expects it
+      else if (log.usage_status === "FAILED") status = "Failed";
+
+      return {
+        transactionId: log.transaction_id,
+        date: dateStr,
+        candidate: log.candidate_id ? `Candidate #${log.candidate_id}` : "Unknown Candidate",
+        package: log.package_id ? `Package #${log.package_id}` : "Custom Verification",
+        unit: `${parseFloat(log.units_consumed)} Units`,
+        status: status,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalCredit,
+        consumedCredit,
+        availableCredit
+      },
+      logs
+    });
+  } catch (error) {
+    console.error("Error fetching usage logs:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+
 export default router;
