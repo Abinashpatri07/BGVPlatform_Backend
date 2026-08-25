@@ -48,6 +48,9 @@ router.post("/send-payment-link", async (req, res) => {
         customer_name: "Finance Department"
       },
       link_notify: { send_sms: false, send_email: false },
+      link_meta: { 
+        notify_url: process.env.WEBHOOK_URL || "https://bgvplatform-backend.onrender.com/api/client-admin/billing/webhook"
+      },
       link_id: linkId,
       link_amount: amount,
       link_currency: "INR",
