@@ -291,9 +291,14 @@ router.get("/history", async (req, res) => {
     );
 
     const invoices = invoicesRows.map(inv => {
-      // Format date like '01 Jul 2025'
+      // Format date like '01 Jul 2025' in Indian Time
       const dateObj = new Date(inv.invoice_date);
-      const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const dateStr = dateObj.toLocaleDateString('en-GB', { 
+        timeZone: 'Asia/Kolkata', 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      });
       
       let status = "Pending";
       if (inv.payment_status === "SUCCESS" || inv.payment_status === "PAID") status = "Paid";
@@ -363,7 +368,12 @@ router.get("/usage-logs", async (req, res) => {
     // For now, we will map candidate_id and package_id to some placeholders or skip if null.
     const logs = usageRows.map(log => {
       const dateObj = new Date(log.usage_date);
-      const dateStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const dateStr = dateObj.toLocaleDateString('en-GB', { 
+        timeZone: 'Asia/Kolkata', 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      });
       
       let status = "Pending";
       if (log.usage_status === "SUCCESS") status = "Paid"; // using Paid as frontend component expects it
