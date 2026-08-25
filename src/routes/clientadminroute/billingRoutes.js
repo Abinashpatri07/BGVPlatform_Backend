@@ -145,14 +145,18 @@ router.post("/webhook", async (req, res) => {
 
     // Attempt to find the link_id
     // Sometimes Cashfree sends it in data.link.link_id, or data.order.order_id
-    let linkId = req.body?.data?.link?.link_id;
+    let linkId = req.body?.data?.link_id || 
+                 req.body?.data?.link?.link_id || 
+                 req.body?.data?.payment_link?.link_id ||
+                 req.body?.data?.order?.order_tags?.link_id;
+
     if (!linkId) {
        // Fallback for some api versions where order_id = link_id
        linkId = req.body?.data?.order?.order_id; 
     }
 
     if (!linkId) {
-      console.warn("Cashfree webhook missing link_id or order_id", req.body);
+      console.warn("Cashfree webhook missing link_id or order_id\nPayload:", JSON.stringify(req.body, null, 2));
       return res.status(200).json({ status: "OK", message: "No link_id found, ignored." });
     }
 
@@ -170,7 +174,7 @@ router.post("/webhook", async (req, res) => {
       );
 
       if (payments.length === 0) {
-        console.warn("Payment record not found for gateway_order_id:", linkId);
+        console.warn(`Payment record not found for gateway_order_id: ${linkId}\nPayload:`, JSON.stringify(req.body, null, 2));
         await connection.rollback();
         return res.status(200).json({ status: "OK", message: "Payment not found" });
       }
