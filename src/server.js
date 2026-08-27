@@ -13,6 +13,7 @@ import vendorRoutes from "./routes/superadminroute/vendorRoutes.js";
 import candidateRoutes from "./routes/superadminroute/candidateRoutes.js";
 import auditRoutes from "./routes/superadminroute/auditRoutes.js";
 import dashboardRoutes from "./routes/superadminroute/dashboardRoutes.js";
+import superAdminBillingRoutes from "./routes/superadminroute/billingRoutes.js";
 
 // ───────── CLIENT ADMIN ─────────
 import clientAdminHrRoutes from "./routes/clientadminroute/hrRoutes.js";
@@ -80,6 +81,7 @@ app.use("/api/vendor", vendorRoutes);
 app.use("/api/candidate", candidateRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/billing", superAdminBillingRoutes);
 
 /* ───────── CLIENT ADMIN ROUTES ───────── */
 

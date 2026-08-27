@@ -5,22 +5,16 @@ import pool from "../../config/db.js";
 
 const router = express.Router();
 
-const PACKAGE_MAP = {
-  "Pro": { id: 1, price: 5000, units: 100 },
-  "Premium": { id: 2, price: 16000, units: 500 },
-  "Enterprise": { id: 3, price: 60000, units: 1500 }
-};
+// Removed hardcoded PACKAGE_MAP, now fetching from billing_package_master
 
 // TODO: Add verifyToken middleware when JWT is implemented on frontend
 router.post("/send-payment-link", async (req, res) => {
   const { customerEmail, packageId } = req.body;
 
-  if (!customerEmail || !packageId || !PACKAGE_MAP[packageId]) {
+  if (!customerEmail || !packageId) {
     return res.status(400).json({ success: false, message: "Invalid package or missing email" });
   }
 
-  const packageInfo = PACKAGE_MAP[packageId];
-  const amount = packageInfo.price;
   const clientId = 1; // Mock client ID (matching dashboard implementation)
 
   let connection;
@@ -29,8 +23,39 @@ router.post("/send-payment-link", async (req, res) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // 1. Insert into billing_invoice
-    const invoiceNumber = `INV-${Date.now()}`;
+    const [packageRows] = await connection.query(
+      "SELECT package_id as id, package_amount as price, credit_units as units FROM billing_package_master WHERE package_name = ? AND is_active = 1",
+      [packageId]
+    );
+
+    if (packageRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Invalid package" });
+    }
+
+    const packageInfo = packageRows[0];
+    const amount = packageInfo.price;
+
+
+    // 1. Generate sequential invoice number (e.g., INV-2026-0001)
+    const currentYear = new Date().getFullYear();
+    const [lastInvoiceRows] = await connection.query(
+      `SELECT invoice_number FROM billing_invoice 
+       WHERE invoice_number LIKE ? 
+       ORDER BY invoice_id DESC LIMIT 1`,
+      [`INV-${currentYear}-%`]
+    );
+
+    let nextSequence = 1;
+    if (lastInvoiceRows.length > 0) {
+      const lastInvoiceNumber = lastInvoiceRows[0].invoice_number;
+      const parts = lastInvoiceNumber.split('-');
+      if (parts.length === 3) {
+        nextSequence = parseInt(parts[2], 10) + 1;
+      }
+    }
+    const sequenceStr = nextSequence.toString().padStart(4, '0');
+    const invoiceNumber = `INV-${currentYear}-${sequenceStr}`;
     const [invoiceResult] = await connection.query(
       `INSERT INTO billing_invoice 
         (invoice_number, client_id, package_id, package_code, package_name, package_amount, subtotal, total_amount, payment_status, invoice_status) 
@@ -39,8 +64,30 @@ router.post("/send-payment-link", async (req, res) => {
     );
     const invoiceId = invoiceResult.insertId;
 
-    // 2. Generate Cashfree Link
-    const linkId = `link_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    // 2. Generate Cashfree Link (GO-YYMMDD-XXXX)
+    const dateObj = new Date();
+    const yy = dateObj.getFullYear().toString().slice(-2);
+    const mm = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const dd = dateObj.getDate().toString().padStart(2, '0');
+    const goPrefix = `GO-${yy}${mm}${dd}`;
+
+    const [lastGoRows] = await connection.query(
+      `SELECT gateway_order_id FROM billing_payment 
+       WHERE gateway_order_id LIKE ? 
+       ORDER BY payment_id DESC LIMIT 1`,
+      [`${goPrefix}-%`]
+    );
+
+    let goNextSequence = 1;
+    if (lastGoRows.length > 0) {
+      const lastGo = lastGoRows[0].gateway_order_id;
+      const parts = lastGo.split('-');
+      if (parts.length === 3) {
+        goNextSequence = parseInt(parts[2], 10) + 1;
+      }
+    }
+    const goSequenceStr = goNextSequence.toString().padStart(4, '0');
+    const linkId = `${goPrefix}-${goSequenceStr}`;
     const cashfreePayload = {
       customer_details: {
         customer_phone: "9999999999",
@@ -79,12 +126,12 @@ router.post("/send-payment-link", async (req, res) => {
     const paymentUrl = data.link_url;
 
     // 3. Insert into billing_payment
-    const paymentNumber = `PAY-${Date.now()}`;
+    const paymentNumber = `PAY-${yy}${mm}${dd}-${goSequenceStr}`;
     await connection.query(
       `INSERT INTO billing_payment 
-        (payment_number, invoice_id, client_id, gateway_order_id, amount, payment_status, gateway_name) 
-       VALUES (?, ?, ?, ?, ?, 'INITIATED', 'CASHFREE')`,
-      [paymentNumber, invoiceId, clientId, linkId, amount]
+        (payment_number, invoice_id, invoice_number, client_id, gateway_order_id, amount, payment_status, gateway_name) 
+       VALUES (?, ?, ?, ?, ?, ?, 'INITIATED', 'CASHFREE')`,
+      [paymentNumber, invoiceId, invoiceNumber, clientId, linkId, amount]
     );
 
     // 4. Send Email
@@ -162,6 +209,14 @@ router.post("/webhook", async (req, res) => {
 
     const cashfreeTxnId = req.body?.data?.payment?.cf_payment_id || "UNKNOWN";
 
+    const paymentGroup = req.body?.data?.payment?.payment_group || "";
+    let actualMethod = "Other";
+    if (paymentGroup === "upi") actualMethod = "UPI";
+    else if (paymentGroup === "credit_card" || paymentGroup === "debit_card" || paymentGroup === "card") actualMethod = "Credit Card";
+    else if (paymentGroup === "net_banking" || paymentGroup === "netbanking") actualMethod = "Net Banking";
+    else if (paymentGroup === "wallet" || paymentGroup === "app") actualMethod = "Wallet";
+    else if (paymentGroup) actualMethod = paymentGroup.toUpperCase();
+
     let connection;
     try {
       connection = await pool.getConnection();
@@ -189,8 +244,8 @@ router.post("/webhook", async (req, res) => {
 
       // 2. Update billing_payment
       await connection.query(
-        "UPDATE billing_payment SET payment_status = 'SUCCESS', transaction_id = ?, payment_date = NOW() WHERE payment_id = ?",
-        [cashfreeTxnId, payment.payment_id]
+        "UPDATE billing_payment SET payment_status = 'SUCCESS', transaction_id = ?, payment_date = NOW(), payment_method = ? WHERE payment_id = ?",
+        [cashfreeTxnId, actualMethod, payment.payment_id]
       );
 
       // 3. Update billing_invoice
@@ -206,8 +261,14 @@ router.post("/webhook", async (req, res) => {
       );
       
       const invoice = invoices[0];
-      const packageInfo = PACKAGE_MAP[invoice.package_name]; // Use the map to find units
-      const creditsToAdd = packageInfo ? packageInfo.units : 0;
+      
+      const [packageRows] = await connection.query(
+        "SELECT credit_units as units FROM billing_package_master WHERE package_name = ?",
+        [invoice.package_name]
+      );
+      
+      const packageInfo = packageRows.length > 0 ? packageRows[0] : null; 
+      const creditsToAdd = packageInfo ? parseFloat(packageInfo.units) : 0;
 
       // 5. Insert into billing_credit_ledger
       if (creditsToAdd > 0) {

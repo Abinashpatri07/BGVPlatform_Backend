@@ -26,11 +26,13 @@ const simulateSuccess = async () => {
 
     for (const payment of payments) {
       const cashfreeTxnId = `sim_txn_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const methods = ['UPI', 'Credit Card', 'Net Banking', 'Wallet'];
+      const randomMethod = methods[Math.floor(Math.random() * methods.length)];
 
       // 2. Update billing_payment
       await connection.query(
-        "UPDATE billing_payment SET payment_status = 'SUCCESS', transaction_id = ?, payment_date = NOW() WHERE payment_id = ?",
-        [cashfreeTxnId, payment.payment_id]
+        "UPDATE billing_payment SET payment_status = 'SUCCESS', transaction_id = ?, payment_date = NOW(), payment_method = IFNULL(payment_method, ?) WHERE payment_id = ?",
+        [cashfreeTxnId, randomMethod, payment.payment_id]
       );
 
       // 3. Update billing_invoice
