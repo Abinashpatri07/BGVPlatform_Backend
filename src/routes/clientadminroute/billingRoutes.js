@@ -64,30 +64,30 @@ router.post("/send-payment-link", async (req, res) => {
     );
     const invoiceId = invoiceResult.insertId;
 
-    // 2. Generate Cashfree Link (GO-YYMMDD-XXXX)
+    // 2. Generate Cashfree Link (YYMMDDXXXX)
     const dateObj = new Date();
     const yy = dateObj.getFullYear().toString().slice(-2);
     const mm = (dateObj.getMonth() + 1).toString().padStart(2, '0');
     const dd = dateObj.getDate().toString().padStart(2, '0');
-    const goPrefix = `GO-${yy}${mm}${dd}`;
+    const goPrefix = `${yy}${mm}${dd}`;
 
     const [lastGoRows] = await connection.query(
       `SELECT gateway_order_id FROM billing_payment 
        WHERE gateway_order_id LIKE ? 
        ORDER BY payment_id DESC LIMIT 1`,
-      [`${goPrefix}-%`]
+      [`${goPrefix}%`]
     );
 
     let goNextSequence = 1;
     if (lastGoRows.length > 0) {
       const lastGo = lastGoRows[0].gateway_order_id;
-      const parts = lastGo.split('-');
-      if (parts.length === 3) {
-        goNextSequence = parseInt(parts[2], 10) + 1;
+      if (lastGo.length >= 10) {
+        const seqPart = lastGo.slice(-4);
+        goNextSequence = parseInt(seqPart, 10) + 1;
       }
     }
     const goSequenceStr = goNextSequence.toString().padStart(4, '0');
-    const linkId = `${goPrefix}-${goSequenceStr}`;
+    const linkId = `${goPrefix}${goSequenceStr}`;
     const cashfreePayload = {
       customer_details: {
         customer_phone: "9999999999",
@@ -469,6 +469,157 @@ router.get("/usage-logs", async (req, res) => {
   } catch (error) {
     console.error("Error fetching usage logs:", error);
     res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+
+// POST Process Refund
+router.post("/refund", async (req, res) => {
+  const { paymentId, reason } = req.body;
+  if (!paymentId) return res.status(400).json({ success: false, message: "Payment ID is required" });
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // 1. Fetch payment and invoice details
+    const [payments] = await connection.query(
+      "SELECT payment_id, invoice_id, client_id, amount, gateway_order_id, payment_status FROM billing_payment WHERE payment_id = ?",
+      [paymentId]
+    );
+
+    if (payments.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Payment not found" });
+    }
+
+    const payment = payments[0];
+    if (payment.payment_status === "REFUNDED") {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Payment is already refunded" });
+    }
+    if (payment.payment_status !== "SUCCESS" && payment.payment_status !== "PAID") {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Only successful payments can be refunded" });
+    }
+
+    // 2. Generate sequential refund number (REF-YYMMDD-XXXX)
+    const dateObj = new Date();
+    const yy = dateObj.getFullYear().toString().slice(-2);
+    const mm = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const dd = dateObj.getDate().toString().padStart(2, '0');
+    const refPrefix = `REF-${yy}${mm}${dd}`;
+
+    const [lastRefRows] = await connection.query(
+      `SELECT refund_number FROM billing_refund WHERE refund_number LIKE ? ORDER BY refund_id DESC LIMIT 1`,
+      [`${refPrefix}-%`]
+    );
+
+    let nextSequence = 1;
+    if (lastRefRows.length > 0) {
+      const parts = lastRefRows[0].refund_number.split('-');
+      if (parts.length === 3) nextSequence = parseInt(parts[2], 10) + 1;
+    }
+    const refundNumber = `${refPrefix}-${nextSequence.toString().padStart(4, '0')}`;
+
+    // 3. Cashfree Refund API call
+    const cashfreePayload = {
+      refund_amount: parseFloat(payment.amount),
+      refund_id: refundNumber,
+      refund_note: reason || "Client Request"
+    };
+
+    const response = await fetch(`https://sandbox.cashfree.com/pg/orders/${payment.gateway_order_id}/refunds`, {
+      method: "POST",
+      headers: {
+        "x-api-version": "2023-08-01",
+        "x-client-id": process.env.CASHFREE_APP_ID,
+        "x-client-secret": process.env.CASHFREE_SECRET_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify(cashfreePayload)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Cashfree Refund Error:", data);
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Cashfree API Error", error: data.message || "Failed to process refund at gateway" });
+    }
+
+    const gatewayRefundId = data.cf_refund_id || refundNumber;
+
+    // 4. Insert into billing_refund
+    await connection.query(
+      `INSERT INTO billing_refund 
+        (refund_number, payment_id, invoice_id, client_id, refund_request_date, refund_amount, refund_reason, refund_status, gateway_refund_id) 
+       VALUES (?, ?, ?, ?, NOW(), ?, ?, 'SUCCESS', ?)`,
+      [refundNumber, payment.payment_id, payment.invoice_id, payment.client_id, payment.amount, reason || 'Requested by client', gatewayRefundId]
+    );
+
+    // 5. Update billing_payment
+    await connection.query(
+      "UPDATE billing_payment SET payment_status = 'REFUNDED' WHERE payment_id = ?",
+      [payment.payment_id]
+    );
+
+    // 6. Update billing_invoice
+    await connection.query(
+      "UPDATE billing_invoice SET payment_status = 'REFUNDED', invoice_status = 'CANCELLED', balance_amount = total_amount, paid_amount = 0 WHERE invoice_id = ?",
+      [payment.invoice_id]
+    );
+
+    // 7. Reverse Credits in billing_credit_ledger
+    // First find how many units were added for this invoice
+    const [invoices] = await connection.query(
+      "SELECT package_name FROM billing_invoice WHERE invoice_id = ?",
+      [payment.invoice_id]
+    );
+    
+    if (invoices.length > 0) {
+      const invoice = invoices[0];
+      const [packageRows] = await connection.query(
+        "SELECT credit_units as units FROM billing_package_master WHERE package_name = ?",
+        [invoice.package_name]
+      );
+      
+      const creditsToReverse = packageRows.length > 0 ? parseFloat(packageRows[0].units) : 0;
+
+      if (creditsToReverse > 0) {
+        const [lastLedger] = await connection.query(
+          "SELECT balance_after FROM billing_credit_ledger WHERE client_id = ? ORDER BY credit_ledger_id DESC LIMIT 1",
+          [payment.client_id]
+        );
+        const currentBalance = lastLedger.length > 0 ? parseFloat(lastLedger[0].balance_after) : 0;
+        const newBalance = currentBalance - creditsToReverse;
+
+        await connection.query(
+          `INSERT INTO billing_credit_ledger 
+            (client_id, transaction_type, reference_type, reference_id, invoice_id, payment_id, credit_out, balance_after, description) 
+           VALUES (?, 'REFUND', 'INVOICE', ?, ?, ?, ?, ?, ?)`,
+          [
+            payment.client_id, 
+            payment.invoice_id, 
+            payment.invoice_id, 
+            payment.payment_id, 
+            creditsToReverse, 
+            newBalance, 
+            `Refund processed for invoice ${payment.invoice_id}`
+          ]
+        );
+      }
+    }
+
+    await connection.commit();
+    res.status(200).json({ success: true, message: "Refund processed successfully", refundId: gatewayRefundId });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error("Refund error:", error);
+    res.status(500).json({ success: false, message: "Server Error during refund" });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
