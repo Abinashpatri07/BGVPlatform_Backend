@@ -33,6 +33,7 @@ import vendorAuthRoutes from "./routes/vendorroute/authRoutes.js";
 // ───────── CANDIDATE ─────────
 import candidateSubmissionRoutes from "./routes/candidateroute/submissionRoutes.js";
 import candidateAuthRoutes from "./routes/candidateroute/authRoutes.js";
+import candidateEkycRoutes from "./routes/candidateroute/ekycRoutes.js";
 
 // ───────── OCR ─────────
 import ocrRoutes from "./routes/ocrRoutes.js";
@@ -62,6 +63,7 @@ app.get("/api-docs.json", (req, res) => {
 /* ───────── CANDIDATE SUBMISSION ROUTES (Must be before Super Admin /api/candidate) ───────── */
 app.use("/api/candidate/submit", candidateSubmissionRoutes);
 app.use("/api/candidate/auth", candidateAuthRoutes);
+app.use("/api/candidate/ekyc", candidateEkycRoutes);
 
 /* ───────── HR ROUTES (Must be before Super Admin /api/hr) ───────── */
 app.use("/api/hr/auth", hrAuthRoutes);

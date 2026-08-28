@@ -30,7 +30,7 @@ router.post('/extract', upload.single('file'), async (req, res) => {
     }
 
     const base64Data = req.file.buffer.toString('base64');
-    
+
     const payload = {
       task_id: "sync_extract_" + Date.now(),
       group_id: "bgv_group",
@@ -197,8 +197,8 @@ router.post('/verify-dl', express.json(), async (req, res) => {
     const payload = {
       task_id: "dl_verify_" + Date.now(),
       group_id: "bgv_group",
-      data: { 
-        id_number: dlNumber, 
+      data: {
+        id_number: dlNumber,
         date_of_birth: dob || "",
         advanced_details: {
           state_info: true,
@@ -260,7 +260,7 @@ router.post('/verify-passport', express.json(), async (req, res) => {
     const payload = {
       task_id: "passport_verify_" + Date.now(),
       group_id: "bgv_group",
-      data: { 
+      data: {
         file_number: fileNumber,
         dob: dob || ""
       }
