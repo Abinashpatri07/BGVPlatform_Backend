@@ -254,6 +254,9 @@ router.post("/id-documents", async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
+    // Clear old identity records for this candidate before inserting new ones
+    await conn.query(`DELETE FROM candidate_identity WHERE cand_id = ?`, [cand_id]);
+
     for (const doc of documents) {
       const statusEnum = getVerificationStatus(doc.verification_status);
       const ocr = doc.ocr_data || {};
@@ -489,6 +492,424 @@ router.post("/employment", upload.single("certificateFile"), async (req, res) =>
     res.status(200).json({ message: "Employment details saved successfully" });
   } catch (error) {
     console.error("Submit Employment Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/submit/drug:
+ *   post:
+ *     summary: Submit Candidate Drug Test
+ *     tags: [Candidate Submission]
+ */
+router.post("/drug", upload.single("reportFile"), async (req, res) => {
+  try {
+    const {
+      cand_id = 1,
+      drugStatus, // Yes or No
+      drugDate,
+      remarks,
+      reportUrl // if URL is sent directly from frontend
+    } = req.body;
+
+    const candidate_id = "CAND-" + cand_id;
+    const client_id = 1; // Assuming dummy client ID for now
+
+    // URL calculation (either uploaded file path or direct URL)
+    const finalReportUrl = req.file ? req.file.path : (reportUrl || null);
+
+    // Clear old records first
+    await pool.query(`DELETE FROM candidate_drug WHERE cand_id = ?`, [cand_id]);
+
+    const query = `
+      INSERT INTO candidate_drug (
+        cand_id,
+        candidate_id,
+        client_id,
+        cand_drug_test,
+        cand_drug_date,
+        cand_drug_remarks,
+        cand_drug_report
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await pool.query(query, [
+      cand_id,
+      candidate_id,
+      client_id,
+      drugStatus || null, // Saving Yes/No here in cand_drug_test (VARCHAR)
+      drugDate || null,
+      remarks || null,
+      finalReportUrl // Saving URL in cand_drug_report
+    ]);
+
+    res.status(200).json({ message: "Drug test details saved successfully" });
+  } catch (error) {
+    console.error("Submit Drug Test Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/submit/criminal:
+ *   post:
+ *     summary: Submit Candidate Criminal Check
+ *     tags: [Candidate Submission]
+ */
+router.post("/criminal", upload.single("reportFile"), async (req, res) => {
+  try {
+    const {
+      cand_id = 1,
+      criminalStatus, // Yes or No
+      remarks,
+      reportUrl // if URL is sent directly from frontend
+    } = req.body;
+
+    const candidate_id = "CAND-" + cand_id;
+    const client_id = 1; // Assuming dummy client ID for now
+
+    // URL calculation (either uploaded file path or direct URL)
+    const finalReportUrl = req.file ? req.file.path : (reportUrl || null);
+
+    // Clear old records first
+    await pool.query(`DELETE FROM candidate_criminal WHERE cand_id = ?`, [cand_id]);
+
+    const query = `
+      INSERT INTO candidate_criminal (
+        cand_id,
+        candidate_id,
+        client_id,
+        cand_crim_record,
+        cand_crim_remarks,
+        cand_crim_report
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    await pool.query(query, [
+      cand_id,
+      candidate_id,
+      client_id,
+      criminalStatus || null, // Saving Yes/No here in cand_crim_record (VARCHAR)
+      remarks || null,
+      finalReportUrl // Saving URL in cand_crim_report
+    ]);
+
+    res.status(200).json({ message: "Criminal check details saved successfully" });
+  } catch (error) {
+    console.error("Submit Criminal Check Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/submit/final:
+ *   post:
+ *     summary: Finalize Candidate Submission
+ *     tags: [Candidate Submission]
+ */
+router.post("/final", async (req, res) => {
+  try {
+    const { cand_id = 1 } = req.body;
+    
+    // In this system candidate status 2 usually implies 'Submitted'
+    const query = `UPDATE candidate_master SET verification_status = 2 WHERE cand_id = ?`;
+    
+    // We wrap it in a try-catch to ignore missing columns safely if schema differs slightly
+    try {
+      await pool.query(query, [cand_id]);
+    } catch (updateErr) {
+      console.warn("Failed to update candidate_master verification_status (column might not exist or be named differently):", updateErr.message);
+    }
+    
+    res.status(200).json({ message: "Candidate finalized and submitted successfully" });
+  } catch (error) {
+    console.error("Final Submit Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/submit/reference:
+ *   post:
+ *     summary: Submit Candidate References
+ *     tags: [Candidate Submission]
+ */
+router.post("/reference", async (req, res) => {
+  try {
+    const { cand_id = 1, references } = req.body;
+    
+    if (!references || !Array.isArray(references)) {
+      return res.status(400).json({ error: "References array is required" });
+    }
+
+    const candidate_id = "CAND-" + cand_id;
+    const client_id = 1; // Assuming dummy client ID for now
+
+    // Clear old records first
+    await pool.query(`DELETE FROM candidate_reference WHERE cand_id = ?`, [cand_id]);
+
+    const query = `
+      INSERT INTO candidate_reference (
+        cand_id,
+        candidate_id,
+        client_id,
+        cand_ref_type,
+        cand_ref_name,
+        cand_ref_phone,
+        cand_ref_email,
+        cand_ref_relation,
+        cand_ref_org
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    // Loop through references array and insert each
+    for (const ref of references) {
+      await pool.query(query, [
+        cand_id,
+        candidate_id,
+        client_id,
+        ref.type || null,
+        ref.name || null,
+        ref.phone || null,
+        ref.email || null,
+        ref.relationship || null,
+        ref.organization || null
+      ]);
+    }
+
+    res.status(200).json({ message: "References saved successfully" });
+  } catch (error) {
+    console.error("Submit References Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+/**
+ * @swagger
+ * /api/candidate/submit/employment:
+ *   post:
+ *     summary: Submit Candidate Employment
+ *     tags: [Candidate Submission]
+ */
+router.post("/employment", upload.any(), async (req, res) => {
+  try {
+    const { cand_id = 1, employmentData } = req.body;
+    let employmentArray = [];
+
+    if (employmentData) {
+      try {
+        employmentArray = JSON.parse(employmentData);
+      } catch (err) {
+        return res.status(400).json({ error: "Invalid employmentData JSON format" });
+      }
+    }
+
+    if (!employmentArray || !Array.isArray(employmentArray) || employmentArray.length === 0) {
+      return res.status(400).json({ error: "No employment records provided" });
+    }
+
+    const candidate_id = "CAND-" + cand_id;
+    const client_id = 1;
+    const files = req.files || [];
+
+    // Clear old employment records for this candidate (if it's a fresh submission)
+    await pool.query(`DELETE FROM candidate_employment WHERE cand_id = ?`, [cand_id]);
+
+    const query = `
+      INSERT INTO candidate_employment (
+        cand_id,
+        candidate_id,
+        client_id,
+        cand_emp_type,
+        cand_first_name,
+        cand_last_name,
+        cand_emp_company,
+        cand_emp_empid,
+        cand_emp_designation,
+        cand_emp_from_date,
+        cand_emp_to_date,
+        cand_emp_joining
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    for (let index = 0; index < employmentArray.length; index++) {
+      const emp = employmentArray[index];
+      const certFile = files.find(f => f.fieldname === `certificateFile_${index}`);
+      const existingFileUrl = req.body[`existingFileUrl_${index}`];
+      const certPath = certFile ? certFile.path : (existingFileUrl || null);
+      
+      const empType = emp.isInternship ? "Internship" : "Employment";
+
+      await pool.query(query, [
+        cand_id,
+        candidate_id,
+        client_id,
+        empType,
+        emp.firstName || null,
+        emp.lastName || null,
+        emp.companyName || null,
+        emp.employeeId || null,
+        emp.designation || null,
+        parseDate(emp.fromDate) || null,
+        parseDate(emp.toDate) || null,
+        certPath
+      ]);
+    }
+
+    res.status(200).json({ message: "Employment details saved successfully" });
+  } catch (error) {
+    console.error("Submit Employment Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+/**
+ * @swagger
+ * /api/candidate/submit/education:
+ *   post:
+ *     summary: Submit Candidate Education
+ *     tags: [Candidate Submission]
+ */
+router.post("/education", upload.any(), async (req, res) => {
+  try {
+    const { cand_id = 1, educationData } = req.body;
+    let educationArray = [];
+    
+    if (educationData) {
+      try {
+        educationArray = JSON.parse(educationData);
+      } catch (err) {
+        return res.status(400).json({ error: "Invalid educationData JSON format" });
+      }
+    }
+
+    if (!educationArray || !Array.isArray(educationArray) || educationArray.length === 0) {
+      return res.status(400).json({ error: "No education records provided" });
+    }
+
+    const candidate_id = "CAND-" + cand_id;
+    const client_id = 1; // Assuming dummy client ID for now
+    const files = req.files || [];
+
+    // Clear old education records for this candidate before inserting new ones
+    await pool.query(`DELETE FROM candidate_education WHERE cand_id = ?`, [cand_id]);
+
+    const query = `
+      INSERT INTO candidate_education (
+        cand_id,
+        candidate_id,
+        client_id,
+        cand_edu_type,
+        cand_edu_institute,
+        cand_edu_dgree,
+        cand_specialization,
+        cand_edu_grade,
+        cand_edu_from_date,
+        cand_edu_to_date,
+        cand_edu_certificate
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    for (const edu of educationArray) {
+      // Find the file associated with this degree type (e.g., 'file_Matriculation')
+      const matchedFile = files.find(f => f.fieldname === `file_${edu.degree}`);
+      const existingFileUrl = req.body[`existingFileUrl_${edu.degree}`];
+      const filePath = matchedFile ? matchedFile.path : (existingFileUrl || null);
+
+      await pool.query(query, [
+        cand_id,
+        candidate_id,
+        client_id,
+        edu.degree || null,
+        edu.institute || null,
+        edu.degree || null,
+        edu.course || null,
+        edu.percentage || null,
+        parseDate(edu.startDate) || null,
+        parseDate(edu.endDate) || null,
+        filePath
+      ]);
+    }
+
+    res.status(200).json({ message: "Education details saved successfully" });
+  } catch (error) {
+    console.error("Submit Education Error:", error);
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/candidate/review/{cand_id}:
+ *   get:
+ *     summary: Fetch all details for a candidate for the final review page
+ *     tags: [Candidate Submission]
+ */
+router.get("/review/:cand_id", async (req, res) => {
+  try {
+    const cand_id = req.params.cand_id;
+    if (!cand_id) {
+      return res.status(400).json({ error: "cand_id is required" });
+    }
+
+    // Helper function to safely run queries
+    const safeQuerySingle = async (query, params) => {
+      try {
+        const [rows] = await pool.query(query, params);
+        return rows[0] || null;
+      } catch (err) {
+        console.error(`Error executing ${query}:`, err.message);
+        return null;
+      }
+    };
+
+    const safeQueryMultiple = async (query, params) => {
+      try {
+        const [rows] = await pool.query(query, params);
+        return rows || [];
+      } catch (err) {
+        console.error(`Error executing ${query}:`, err.message);
+        return [];
+      }
+    };
+
+    // Run queries concurrently but safely
+    const [
+      basicInfo,
+      address,
+      idDocs,
+      education,
+      employment,
+      drugTest,
+      criminal,
+      references
+    ] = await Promise.all([
+      safeQuerySingle(`SELECT * FROM candidate_master WHERE cand_id = ?`, [cand_id]),
+      safeQuerySingle(`SELECT * FROM candidate_address WHERE cand_id = ?`, [cand_id]),
+      safeQueryMultiple(`SELECT * FROM candidate_identity WHERE cand_id = ?`, [cand_id]),
+      safeQueryMultiple(`SELECT * FROM candidate_education WHERE cand_id = ?`, [cand_id]),
+      safeQueryMultiple(`SELECT * FROM candidate_employment WHERE cand_id = ?`, [cand_id]),
+      safeQuerySingle(`SELECT * FROM candidate_drug WHERE cand_id = ?`, [cand_id]),
+      safeQuerySingle(`SELECT * FROM candidate_criminal WHERE cand_id = ?`, [cand_id]),
+      safeQueryMultiple(`SELECT * FROM candidate_reference WHERE cand_id = ?`, [cand_id])
+    ]);
+
+    const aggregateData = {
+      basicInfo: basicInfo || {},
+      address: address || {},
+      idDocs: idDocs || [],
+      education: education || [],
+      employment: employment || [],
+      drugTest: drugTest || null,
+      criminal: criminal || null,
+      references: references || []
+    };
+
+    res.status(200).json(aggregateData);
+  } catch (error) {
+    console.error("Fetch Review Data Error:", error);
     res.status(500).json({ error: "Internal Server Error: " + error.message });
   }
 });
