@@ -22,7 +22,7 @@ router.post("/login", async (req, res) => {
 
     // Find user with role = candidate and get candidate experience
     const [rows] = await pool.query(
-      `SELECT u.*, c.candidate_experience 
+      `SELECT u.*, c.candidate_experience, c.cand_id 
        FROM users u
        LEFT JOIN candidate c ON u.email = c.candidate_email
        WHERE u.email = ? AND u.is_delete = 0 AND u.is_active = 1`,
@@ -66,6 +66,7 @@ router.post("/login", async (req, res) => {
         email: user.email,
         role: user.role_name,
         candidate_experience: user.candidate_experience || 1,
+        cand_id: user.cand_id,
       },
     });
   } catch (err) {

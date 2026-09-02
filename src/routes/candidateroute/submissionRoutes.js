@@ -257,6 +257,8 @@ router.post("/id-documents", async (req, res) => {
     // Clear old identity records for this candidate before inserting new ones
     await conn.query(`DELETE FROM candidate_identity WHERE cand_id = ?`, [cand_id]);
 
+    const case_id = null;
+
     for (const doc of documents) {
       const statusEnum = getVerificationStatus(doc.verification_status);
       const ocr = doc.ocr_data || {};
@@ -291,7 +293,7 @@ router.post("/id-documents", async (req, res) => {
       const query = `
         INSERT INTO candidate_identity 
         (
-          cand_id, candidate_id, client_id, cand_iden_type, iden_verification_status,
+          cand_id, candidate_id, client_id, case_id, cand_iden_type, iden_verification_status,
           pan_number, passport_number, driving_number, voter_number,
           cand_full_name, cand_father_name, cand_dob, cand_gender, cand_nationality,
           cand_birth_place, cand_address, cand_blood_group, cand_vehicle_class,
@@ -299,13 +301,14 @@ router.post("/id-documents", async (req, res) => {
           driv_issue_date, driv_expiry_date,
           voter_issue_date
         ) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       
       await conn.query(query, [
         cand_id,
         "CAND-" + cand_id, 
         1, 
+        case_id,
         doc.doc_type,
         statusEnum,
         pan,
@@ -374,11 +377,13 @@ router.post("/uan", async (req, res) => {
 
     // If no employment records exist (e.g. they skipped employment step), insert a new record
     if (result.affectedRows === 0 && has_uan) {
+    const case_id = null;
+
        const insertQuery = `
-         INSERT INTO candidate_employment (cand_id, candidate_id, client_id, cand_emp_uan_number)
-         VALUES (?, ?, ?, ?)
+         INSERT INTO candidate_employment (cand_id, candidate_id, client_id, case_id, cand_emp_uan_number)
+         VALUES (?, ?, ?, ?, ?)
        `;
-       await pool.query(insertQuery, [cand_id, "CAND-" + cand_id, 1, uan_number]);
+       await pool.query(insertQuery, [cand_id, "CAND-" + cand_id, 1, case_id, uan_number]);
     }
 
     res.status(200).json({ message: "UAN saved successfully" });
@@ -433,68 +438,7 @@ router.post("/consent", async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/candidate/submit/employment:
- *   post:
- *     summary: Submit Candidate Employment
- *     tags: [Candidate Submission]
- */
-router.post("/employment", upload.single("certificateFile"), async (req, res) => {
-  try {
-    const {
-      cand_id = 1,
-      isInternship,
-      companyName,
-      employeeId,
-      firstName,
-      lastName,
-      fromDate,
-      toDate,
-      designation
-    } = req.body;
 
-    const cand_emp_type = isInternship === "true" || isInternship === true ? "Internship" : "Full-Time";
-
-    const query = `
-      INSERT INTO candidate_employment (
-        cand_id,
-        candidate_id,
-        client_id,
-        cand_emp_type,
-        cand_emp_company,
-        cand_emp_empid,
-        cand_first_name,
-        cand_last_name,
-        cand_emp_from_date,
-        cand_emp_to_date,
-        cand_emp_designation
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const candidate_id = "CAND-" + cand_id;
-    const client_id = 1; // Dummy client ID
-
-    await pool.query(query, [
-      cand_id,
-      candidate_id,
-      client_id,
-      cand_emp_type,
-      companyName || "N/A", 
-      employeeId || null,
-      firstName || null,
-      lastName || null,
-      fromDate || null,
-      toDate || null,
-      designation || null
-    ]);
-
-    res.status(200).json({ message: "Employment details saved successfully" });
-  } catch (error) {
-    console.error("Submit Employment Error:", error);
-    res.status(500).json({ error: "Internal Server Error: " + error.message });
-  }
-});
 
 /**
  * @swagger
@@ -522,22 +466,26 @@ router.post("/drug", upload.single("reportFile"), async (req, res) => {
     // Clear old records first
     await pool.query(`DELETE FROM candidate_drug WHERE cand_id = ?`, [cand_id]);
 
+    const case_id = null;
+
     const query = `
       INSERT INTO candidate_drug (
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         cand_drug_test,
         cand_drug_date,
         cand_drug_remarks,
         cand_drug_report
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await pool.query(query, [
       cand_id,
       candidate_id,
       client_id,
+      case_id,
       drugStatus || null, // Saving Yes/No here in cand_drug_test (VARCHAR)
       drugDate || null,
       remarks || null,
@@ -576,21 +524,25 @@ router.post("/criminal", upload.single("reportFile"), async (req, res) => {
     // Clear old records first
     await pool.query(`DELETE FROM candidate_criminal WHERE cand_id = ?`, [cand_id]);
 
+    const case_id = null;
+
     const query = `
       INSERT INTO candidate_criminal (
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         cand_crim_record,
         cand_crim_remarks,
         cand_crim_report
-      ) VALUES (?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     await pool.query(query, [
       cand_id,
       candidate_id,
       client_id,
+      case_id,
       criminalStatus || null, // Saving Yes/No here in cand_crim_record (VARCHAR)
       remarks || null,
       finalReportUrl // Saving URL in cand_crim_report
@@ -615,13 +567,46 @@ router.post("/final", async (req, res) => {
     const { cand_id = 1 } = req.body;
     
     // In this system candidate status 2 usually implies 'Submitted'
-    const query = `UPDATE candidate_master SET verification_status = 2 WHERE cand_id = ?`;
+    const query = `UPDATE candidate SET verification_status = 2 WHERE cand_id = ?`;
     
-    // We wrap it in a try-catch to ignore missing columns safely if schema differs slightly
     try {
       await pool.query(query, [cand_id]);
     } catch (updateErr) {
-      console.warn("Failed to update candidate_master verification_status (column might not exist or be named differently):", updateErr.message);
+      console.warn("Failed to update candidate verification_status:", updateErr.message);
+    }
+
+    const candidate_id = "CAND-" + cand_id;
+    const client_id = 1; // Default client ID as used elsewhere
+
+    const moduleMappings = [
+      { table: 'candidate_identity', type: 1 },
+      { table: 'candidate_address', type: 2 },
+      { table: 'candidate_education', type: 3 },
+      { table: 'candidate_employment', type: 5 },
+      { table: 'candidate_drug', type: 7 },
+      { table: 'candidate_criminal', type: 8 },
+      { table: 'candidate_reference', type: 9 }
+    ];
+
+    for (const mod of moduleMappings) {
+      try {
+        // Check if there are records in this table for the candidate
+        const [rows] = await pool.query(`SELECT COUNT(*) as count FROM \`${mod.table}\` WHERE cand_id = ?`, [cand_id]);
+        if (rows[0].count > 0) {
+          // Create a new case in case_master
+          const insertQuery = `
+            INSERT INTO case_master (cand_id, candidate_id, client_id, case_type)
+            VALUES (?, ?, ?, ?)
+          `;
+          const [result] = await pool.query(insertQuery, [cand_id, candidate_id, client_id, mod.type]);
+          const newCaseId = result.insertId;
+
+          // Update the child table with the generated case_id
+          await pool.query(`UPDATE \`${mod.table}\` SET case_id = ? WHERE cand_id = ?`, [newCaseId, cand_id]);
+        }
+      } catch (err) {
+        console.warn(`Failed to generate case for table ${mod.table}:`, err.message);
+      }
     }
     
     res.status(200).json({ message: "Candidate finalized and submitted successfully" });
@@ -652,18 +637,21 @@ router.post("/reference", async (req, res) => {
     // Clear old records first
     await pool.query(`DELETE FROM candidate_reference WHERE cand_id = ?`, [cand_id]);
 
+    const case_id = null;
+
     const query = `
       INSERT INTO candidate_reference (
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         cand_ref_type,
         cand_ref_name,
         cand_ref_phone,
         cand_ref_email,
         cand_ref_relation,
         cand_ref_org
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     // Loop through references array and insert each
@@ -672,6 +660,7 @@ router.post("/reference", async (req, res) => {
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         ref.type || null,
         ref.name || null,
         ref.phone || null,
@@ -718,11 +707,14 @@ router.post("/employment", upload.any(), async (req, res) => {
     // Clear old employment records for this candidate (if it's a fresh submission)
     await pool.query(`DELETE FROM candidate_employment WHERE cand_id = ?`, [cand_id]);
 
+    const case_id = null;
+
     const query = `
       INSERT INTO candidate_employment (
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         cand_emp_type,
         cand_first_name,
         cand_last_name,
@@ -732,7 +724,7 @@ router.post("/employment", upload.any(), async (req, res) => {
         cand_emp_from_date,
         cand_emp_to_date,
         cand_emp_joining
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     for (let index = 0; index < employmentArray.length; index++) {
@@ -747,6 +739,7 @@ router.post("/employment", upload.any(), async (req, res) => {
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         empType,
         emp.firstName || null,
         emp.lastName || null,
@@ -796,11 +789,14 @@ router.post("/education", upload.any(), async (req, res) => {
     // Clear old education records for this candidate before inserting new ones
     await pool.query(`DELETE FROM candidate_education WHERE cand_id = ?`, [cand_id]);
 
+    const case_id = null;
+
     const query = `
       INSERT INTO candidate_education (
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         cand_edu_type,
         cand_edu_institute,
         cand_edu_dgree,
@@ -809,7 +805,7 @@ router.post("/education", upload.any(), async (req, res) => {
         cand_edu_from_date,
         cand_edu_to_date,
         cand_edu_certificate
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     for (const edu of educationArray) {
@@ -822,6 +818,7 @@ router.post("/education", upload.any(), async (req, res) => {
         cand_id,
         candidate_id,
         client_id,
+        case_id,
         edu.degree || null,
         edu.institute || null,
         edu.degree || null,
@@ -886,7 +883,7 @@ router.get("/review/:cand_id", async (req, res) => {
       criminal,
       references
     ] = await Promise.all([
-      safeQuerySingle(`SELECT * FROM candidate_master WHERE cand_id = ?`, [cand_id]),
+      safeQuerySingle(`SELECT * FROM candidate WHERE cand_id = ?`, [cand_id]),
       safeQuerySingle(`SELECT * FROM candidate_address WHERE cand_id = ?`, [cand_id]),
       safeQueryMultiple(`SELECT * FROM candidate_identity WHERE cand_id = ?`, [cand_id]),
       safeQueryMultiple(`SELECT * FROM candidate_education WHERE cand_id = ?`, [cand_id]),

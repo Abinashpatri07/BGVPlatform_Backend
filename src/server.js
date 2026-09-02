@@ -14,6 +14,7 @@ import candidateRoutes from "./routes/superadminroute/candidateRoutes.js";
 import auditRoutes from "./routes/superadminroute/auditRoutes.js";
 import dashboardRoutes from "./routes/superadminroute/dashboardRoutes.js";
 import superAdminBillingRoutes from "./routes/superadminroute/billingRoutes.js";
+import superAdminCaseRoutes from "./routes/superadminroute/caseRoutes.js";
 
 // ───────── CLIENT ADMIN ─────────
 import clientAdminHrRoutes from "./routes/clientadminroute/hrRoutes.js";
@@ -84,6 +85,7 @@ app.use("/api/candidate", candidateRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/billing", superAdminBillingRoutes);
+app.use("/api/superadmin/cases", superAdminCaseRoutes);
 
 /* ───────── CLIENT ADMIN ROUTES ───────── */
 

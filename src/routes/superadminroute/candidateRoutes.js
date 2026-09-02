@@ -1,5 +1,9 @@
 import express from "express";
 import pool from "../../config/db.js";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import { v4 as uuidv4 } from "uuid";
+import { sendEmail } from "../../utils/sendEmail.js";
 
 import validateCreateCandidate from
 "../../middleware/superadmin/validateCreateCandidate.js";
@@ -11,6 +15,53 @@ const router = express.Router();
 import apiLogger from "../../middleware/apiLogger.js";
 
 router.use(apiLogger({ sourceService: "Super Admin Portal", destinationService: "Backend API" }));
+
+const sendCandidateWelcomeEmailHelper = (candidateName, candidateEmail, setupToken = null) => {
+  const companyName = "Dqnex";
+  const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+  const portalUrl = setupToken ? `${baseUrl}/setup-password?token=${setupToken}` : `${baseUrl}/`;
+  const supportEmail = "info@dqnex.com";
+  const supportPhone = "+91-XXXXXXXXXX";
+
+  const emailHtml = `
+    <p>Dear ${candidateName},</p>
+    <p>Welcome!</p>
+    <p>Your background verification process has been initiated by <b>${companyName}</b>. To proceed, please complete your onboarding through our Background Verification Portal.</p>
+    <p><b>What you need to do:</b></p>
+    <ul>
+      <li>Log in using the link below to set your password and access the portal.</li>
+      <li>Verify your email address using the OTP sent to your registered email.</li>
+      <li>Complete your personal and employment details.</li>
+      <li>Upload the required documents (such as Aadhaar, PAN, educational certificates, and other requested documents).</li>
+      <li>Review all the information carefully and submit your application.</li>
+    </ul>
+    <p><b>Portal Setup Link:</b> <a href="${portalUrl}">${portalUrl}</a></p>
+    <p><b>Login Details:</b></p>
+    <ul>
+      <li><b>Email:</b> ${candidateEmail}</li>
+    </ul>
+    <p><b>Important Notes:</b></p>
+    <ul>
+      <li>Please ensure all information provided is accurate and matches your official documents.</li>
+      <li>Upload clear, legible copies of all required documents.</li>
+      <li>Incomplete or incorrect information may delay your verification process.</li>
+      <li>If additional information is required, you will receive a notification via email.</li>
+    </ul>
+    <p>If you experience any issues while accessing the portal or completing your profile, please contact our support team:</p>
+    <p><b>Email:</b> <a href="mailto:${supportEmail}">${supportEmail}</a><br>
+    <b>Phone:</b> ${supportPhone}</p>
+    <p>Thank you for your cooperation. We look forward to completing your background verification successfully.</p>
+    <p>Best regards,<br>
+    <b>Background Verification Team</b></p>
+  `;
+
+  return sendEmail({
+    to: candidateEmail,
+    subject: "Welcome to Background Verification Portal",
+    text: `Dear ${candidateName},\n\nWelcome!\n\nYour background verification process has been initiated by ${companyName}. To proceed, please log in at ${portalUrl}\n\nLogin Email: ${candidateEmail}\n\nBest regards,\nBackground Verification Team`,
+    html: emailHtml,
+  }).catch(err => console.error("Error sending welcome email in background:", err));
+};
 
 /**
  * @swagger
@@ -360,6 +411,33 @@ router.post(
         `UPDATE candidate SET candidate_id = ? WHERE cand_id = ?`,
         [finalCandidateId, newCandId]
       );
+
+      // Generate a setup token
+      const setupToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+      // Insert into users table
+      const dummyPassword = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
+      try {
+        await pool.query(
+          `INSERT INTO users (first_name, last_name, username, email, role_id, role_name, password, password_reset_token, password_reset_expiry, is_active, is_delete)
+           VALUES (?, ?, ?, ?, 4, 'candidate', ?, ?, ?, 1, 0)`,
+          [firstName.trim(), lastName.trim(), email.trim().toLowerCase(), email.trim().toLowerCase(), dummyPassword, setupToken, tokenExpiry]
+        );
+      } catch (userErr) {
+        if (userErr.code === "ER_DUP_ENTRY") {
+          // If user exists, just update the token
+          await pool.query(
+            `UPDATE users SET password_reset_token = ?, password_reset_expiry = ? WHERE email = ?`,
+            [setupToken, tokenExpiry, email.trim().toLowerCase()]
+          );
+        } else {
+          throw userErr;
+        }
+      }
+
+      // Send Welcome Email automatically on creation
+      sendCandidateWelcomeEmailHelper(`${firstName.trim()} ${lastName.trim()}`.trim(), email.trim().toLowerCase(), setupToken);
 
       return res.status(200).json({
         success: true,
@@ -817,4 +895,67 @@ router.patch("/reject/:id", async (req, res) => {
   }
 });
 
-export default router;
+/**
+ * @swagger
+ * /api/candidate/send-welcome-email/{candId}:
+ *   post:
+ *     summary: Send a welcome email to a candidate (Super Admin)
+ *     tags: [Super Admin - Candidate]
+ *     parameters:
+ *       - in: path
+ *         name: candId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Email sent successfully
+ *       404:
+ *         description: Candidate not found
+ *       500:
+ *         description: Server Error
+ */
+router.post("/send-welcome-email/:candId", async (req, res) => {
+  const { candId } = req.params;
+  try {
+    const [candidates] = await pool.query(
+      "SELECT candidate_first_name, candidate_last_name, candidate_email FROM candidate WHERE cand_id = ? AND is_delete = 0",
+      [candId]
+    );
+
+    if (candidates.length === 0) {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+
+    const candidate = candidates[0];
+    const candidateName = `${candidate.candidate_first_name} ${candidate.candidate_last_name}`.trim();
+    const candidateEmail = candidate.candidate_email;
+
+    // Always generate a fresh token when resending welcome email
+    const setupToken = uuidv4();
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    // Get candidate name parts
+    const firstName = candidate.candidate_first_name || "";
+    const lastName = candidate.candidate_last_name || "";
+
+    // INSERT user if not exists, otherwise UPDATE token
+    const dummyPassword = `locked_${uuidv4()}`;
+    await pool.query(
+      `INSERT INTO users (first_name, last_name, username, email, role_id, role_name, password, password_reset_token, password_reset_expiry, is_active, is_delete)
+       VALUES (?, ?, ?, ?, 4, 'candidate', ?, ?, ?, 1, 0)
+       ON DUPLICATE KEY UPDATE password_reset_token = VALUES(password_reset_token), password_reset_expiry = VALUES(password_reset_expiry)`,
+      [firstName, lastName, candidateEmail, candidateEmail, dummyPassword, setupToken, tokenExpiry]
+    );
+
+    // Send email asynchronously using helper
+    sendCandidateWelcomeEmailHelper(candidateName, candidateEmail, setupToken);
+
+    return res.status(200).json({ success: true, message: "Welcome email sent successfully." });
+  } catch (err) {
+    console.error("Send Welcome Email Error:", err);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
+  }
+});
+
+export default router;
