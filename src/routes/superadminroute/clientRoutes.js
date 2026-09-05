@@ -1,5 +1,7 @@
 import express from "express";
 import pool from "../../config/db.js";
+import { v4 as uuidv4 } from "uuid";
+import { sendEmail } from "../../utils/sendEmail.js";
 import validateCreateClient from "../../middleware/superadmin/validateCreateClient.js";
 
 const router = express.Router();
@@ -130,10 +132,54 @@ router.post(
         ]
       );
 
+      const clientId = result.insertId;
+
+      /* ── INSERT INTO users TABLE FOR CLIENT ADMIN ── */
+      const setupToken = uuidv4();
+      const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+      await pool.query(
+        `INSERT INTO users 
+          (first_name, last_name, username, email, mobile, role_name, client_id, password_reset_token, password_reset_expiry, is_active, is_delete, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'Client Admin', ?, ?, ?, 1, 0, NOW(), NOW())`,
+        [
+          firstName.trim(),
+          lastName.trim(),
+          email.trim().toLowerCase(), // username
+          email.trim().toLowerCase(), // email
+          fullPhone,                  // mobile
+          clientId,
+          setupToken,
+          tokenExpiry
+        ]
+      );
+
+      /* ── SEND WELCOME EMAIL ── */
+      const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+      const portalUrl = `${baseUrl}/client-setup-password?token=${setupToken}`;
+
+      const emailHtml = `
+        <p>Dear ${firstName} ${lastName},</p>
+        <p>Welcome to the BGV Platform!</p>
+        <p>Your Client Admin account for <b>${companyName}</b> has been successfully created.</p>
+        <p>Please click the link below to securely set your password and access the Client Admin Portal:</p>
+        <p><a href="${portalUrl}" style="padding: 10px 15px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 5px;">Set My Password</a></p>
+        <p>Or copy and paste this URL into your browser:</p>
+        <p><a href="${portalUrl}">${portalUrl}</a></p>
+        <p><i>Note: This setup link is valid for 48 hours.</i></p>
+        <p>Best regards,<br>The BGV Platform Team</p>
+      `;
+
+      sendEmail({
+        to: email.trim().toLowerCase(),
+        subject: "Welcome to BGV Platform - Setup Your Client Admin Account",
+        html: emailHtml,
+      }).catch(err => console.error("Client Admin welcome email failed:", err));
+
       return res.status(201).json({
         success: true,
         message: "Client created successfully",
-        clientId: result.insertId,
+        clientId,
       });
 
     } catch (error) {
@@ -588,6 +634,86 @@ router.patch("/update-client/:id", async (req, res) => {
   } catch (error) {
     console.error("update-client error:", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/client/send-welcome-email/{clientId}:
+ *   post:
+ *     summary: Resend welcome/setup email to Client Admin
+ *     tags: [Super Admin - Client]
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Email sent successfully
+ *       404:
+ *         description: Client not found
+ */
+router.post("/send-welcome-email/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    const [clients] = await pool.query(
+      "SELECT company_name, poc_first_name, poc_last_name, poc_email FROM client_master WHERE client_id = ? AND is_delete = 0",
+      [clientId]
+    );
+
+    if (clients.length === 0) {
+      return res.status(404).json({ success: false, message: "Client not found" });
+    }
+
+    const client = clients[0];
+    const setupToken = uuidv4();
+    const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+    // Ensure they exist in the users table, update the token if they do
+    const [users] = await pool.query(
+      "SELECT users_id FROM users WHERE client_id = ? AND role_name = 'Client Admin' AND is_delete = 0",
+      [clientId]
+    );
+
+    if (users.length > 0) {
+      await pool.query(
+        "UPDATE users SET password_reset_token = ?, password_reset_expiry = ? WHERE users_id = ?",
+        [setupToken, tokenExpiry, users[0].users_id]
+      );
+    } else {
+      // If by any chance they don't exist yet, we could insert them, but they should be created in /create-client
+      return res.status(404).json({ success: false, message: "Client Admin user account not found for this client." });
+    }
+
+    const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+    const portalUrl = `${baseUrl}/client-setup-password?token=${setupToken}`;
+
+    const emailHtml = `
+      <p>Dear ${client.poc_first_name} ${client.poc_last_name},</p>
+      <p>Welcome to the BGV Platform!</p>
+      <p>Your Client Admin account for <b>${client.company_name}</b> is ready.</p>
+      <p>Please click the link below to securely set your password and access the Client Admin Portal:</p>
+      <p><a href="${portalUrl}" style="padding: 10px 15px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 5px;">Set My Password</a></p>
+      <p>Or copy and paste this URL into your browser:</p>
+      <p><a href="${portalUrl}">${portalUrl}</a></p>
+      <p><i>Note: This setup link is valid for 48 hours.</i></p>
+      <p>Best regards,<br>The BGV Platform Team</p>
+    `;
+
+    // Send email asynchronously
+    sendEmail({
+      to: client.poc_email.trim().toLowerCase(),
+      subject: "Welcome to BGV Platform - Setup Your Client Admin Account",
+      html: emailHtml,
+    }).catch(err => console.error("Client Admin welcome email failed:", err));
+
+    return res.status(200).json({ success: true, message: "Welcome email sent successfully." });
+  } catch (err) {
+    console.error("Send Welcome Email Error:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 

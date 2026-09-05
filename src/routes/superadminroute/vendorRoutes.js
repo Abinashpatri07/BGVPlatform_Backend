@@ -1,5 +1,9 @@
 import express from "express";
 import pool from "../../config/db.js";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import { v4 as uuidv4 } from "uuid";
+import { sendEmail } from "../../utils/sendEmail.js";
 
 import validateCreateVendor from
 "../../middleware/superadmin/validateCreateVendor.js";
@@ -8,6 +12,34 @@ import validateUpdateVendor from
 "../../middleware/superadmin/validateUpdateVendor.js";
 
 const router = express.Router();
+
+const sendVendorWelcomeEmailHelper = (vendorName, pocName, pocEmail, setupToken = null) => {
+  const companyName = "Dqnex";
+  const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+  const portalUrl = setupToken ? `${baseUrl}/vendor-setup-password?token=${setupToken}` : `${baseUrl}/`;
+  const supportEmail = "info@dqnex.com";
+  const supportPhone = "+91-XXXXXXXXXX";
+
+  const emailHtml = `
+    <p>Dear ${pocName},</p>
+    <p>Welcome to <b>${companyName}</b>!</p>
+    <p>Your vendor account for <b>${vendorName}</b> has been created successfully. To proceed and access the Vendor Portal, please set up your password.</p>
+    <p><b>Portal Setup Link:</b> <a href="${portalUrl}">${portalUrl}</a></p>
+    <p><b>Login Email:</b> ${pocEmail}</p>
+    <p>If you experience any issues, please contact our support team:</p>
+    <p><b>Email:</b> <a href="mailto:${supportEmail}">${supportEmail}</a><br>
+    <b>Phone:</b> ${supportPhone}</p>
+    <p>Best regards,<br>
+    <b>${companyName} Team</b></p>
+  `;
+
+  return sendEmail({
+    to: pocEmail,
+    subject: "Welcome to Vendor Portal",
+    text: `Dear ${pocName},\n\nWelcome to ${companyName}!\n\nYour vendor account has been created. To proceed, please set up your password at ${portalUrl}\n\nLogin Email: ${pocEmail}\n\nBest regards,\n${companyName} Team`,
+    html: emailHtml,
+  }).catch(err => console.error("Error sending vendor welcome email in background:", err));
+};
 
 /* Service index → DB service_type mapping
    SERVICES array order in frontend:
@@ -198,6 +230,19 @@ router.post(
       );
 
       const vendorId = result.insertId;
+
+      // Generate a setup token
+      const setupToken = uuidv4();
+      const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+      
+      // Update the vendor with the token
+      await pool.query(
+        `UPDATE vendor_master SET password_reset_token = ?, password_reset_expiry = ? WHERE vendor_id = ?`,
+        [setupToken, tokenExpiry, vendorId]
+      );
+
+      // Send Welcome Email
+      sendVendorWelcomeEmailHelper(vendorName.trim(), `${firstName.trim()} ${lastName.trim()}`.trim(), email.trim().toLowerCase(), setupToken);
 
       return res.status(201).json({
         success: true,
@@ -546,16 +591,68 @@ router.patch("/suspend/:id", async (req, res) => {
       [reason, id]
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Vendor Suspended Successfully",
+      message: "Vendor suspended successfully",
     });
+
   } catch (error) {
     console.error("suspend-vendor error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/vendor/send-welcome-email/{vendorId}:
+ *   post:
+ *     summary: Send a welcome email to a vendor
+ *     tags: [Super Admin - Vendor]
+ *     parameters:
+ *       - in: path
+ *         name: vendorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Email sent successfully
+ *       404:
+ *         description: Vendor not found
+ *       500:
+ *         description: Server Error
+ */
+router.post("/send-welcome-email/:vendorId", async (req, res) => {
+  const { vendorId } = req.params;
+  try {
+    const [vendors] = await pool.query(
+      "SELECT company_name, poc_first_name, poc_last_name, poc_email FROM vendor_master WHERE vendor_id = ? AND is_delete = 0",
+      [vendorId]
+    );
+
+    if (vendors.length === 0) {
+      return res.status(404).json({ success: false, message: "Vendor not found" });
+    }
+
+    const vendor = vendors[0];
+    const vendorName = vendor.company_name;
+    const pocName = `${vendor.poc_first_name} ${vendor.poc_last_name}`.trim();
+    const pocEmail = vendor.poc_email;
+
+    const setupToken = uuidv4();
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `UPDATE vendor_master SET password_reset_token = ?, password_reset_expiry = ? WHERE vendor_id = ?`,
+      [setupToken, tokenExpiry, vendorId]
+    );
+
+    sendVendorWelcomeEmailHelper(vendorName, pocName, pocEmail, setupToken);
+
+    return res.status(200).json({ success: true, message: "Welcome email sent successfully." });
+  } catch (err) {
+    console.error("Send Vendor Welcome Email Error:", err);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
   }
 });
 

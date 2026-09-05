@@ -207,4 +207,160 @@ router.post("/logout", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/client-admin/auth/setup-info:
+ *   get:
+ *     summary: Get Client Admin setup info by token
+ *     tags: [Client Admin - Auth]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.get("/setup-info", async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) return res.status(400).json({ success: false, message: "Token is required." });
+
+  try {
+    const [users] = await pool.query(
+      "SELECT email FROM users WHERE password_reset_token = ? AND role_name = 'Client Admin' AND is_delete = 0",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired setup token." });
+    }
+
+    return res.status(200).json({ success: true, email: users[0].email });
+  } catch (err) {
+    console.error("Setup Info Error:", err);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+/**
+ * @swagger
+ * /api/client-admin/auth/send-setup-otp:
+ *   post:
+ *     summary: Send OTP for Client Admin password setup
+ *     tags: [Client Admin - Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ */
+router.post("/send-setup-otp", async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) return res.status(400).json({ success: false, message: "Token is required." });
+
+  try {
+    const [users] = await pool.query(
+      "SELECT users_id, email, first_name FROM users WHERE password_reset_token = ? AND role_name = 'Client Admin' AND is_delete = 0",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired setup token." });
+    }
+
+    const user = users[0];
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+
+    await pool.query(
+      "UPDATE users SET last_otp = ?, otp_expiry = ? WHERE users_id = ?",
+      [otp, expiry, user.users_id]
+    );
+
+    sendEmail({
+      to: user.email,
+      subject: "Client Admin Portal - Password Setup OTP",
+      text: `Your OTP for setting up your password is: ${otp}. It is valid for 5 minutes.`,
+      html: `<h3>Client Admin Setup</h3><p>Your OTP is: <b>${otp}</b></p><p>It is valid for 5 minutes.</p>`,
+    }).catch(err => console.error("Send Setup OTP Error:", err));
+
+    return res.status(200).json({ success: true, message: "OTP sent to your email." });
+  } catch (err) {
+    console.error("Send Setup OTP Error:", err);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+/**
+ * @swagger
+ * /api/client-admin/auth/set-password:
+ *   post:
+ *     summary: Set password for Client Admin using OTP
+ *     tags: [Client Admin - Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, otp, password]
+ *             properties:
+ *               token:
+ *                 type: string
+ *               otp:
+ *                 type: string
+ *               password:
+ *                 type: string
+ */
+router.post("/set-password", async (req, res) => {
+  const { token, otp, password } = req.body;
+
+  if (!token || !otp || !password) {
+    return res.status(400).json({ success: false, message: "Token, OTP, and Password are required." });
+  }
+
+  try {
+    const [users] = await pool.query(
+      "SELECT users_id, last_otp, otp_expiry FROM users WHERE password_reset_token = ? AND role_name = 'Client Admin' AND is_delete = 0",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired setup token." });
+    }
+
+    const user = users[0];
+
+    if (!user.last_otp || user.last_otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP." });
+    }
+
+    if (new Date(user.otp_expiry) < new Date()) {
+      return res.status(400).json({ success: false, message: "OTP has expired." });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    await pool.query(
+      "UPDATE users SET password = ?, password_reset_token = NULL, password_reset_expiry = NULL, last_otp = NULL, otp_expiry = NULL WHERE users_id = ?",
+      [hashedPassword, user.users_id]
+    );
+
+    return res.status(200).json({ success: true, message: "Password set successfully." });
+  } catch (err) {
+    console.error("Set Password Error:", err);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
 export default router;

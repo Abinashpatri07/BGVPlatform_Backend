@@ -220,4 +220,119 @@ router.post("/logout", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/vendor/auth/setup-info:
+ *   get:
+ *     summary: Get vendor setup info by token
+ *     tags: [Vendor - Auth]
+ */
+router.get("/setup-info", async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ success: false, message: "Token is required" });
+
+    const [rows] = await pool.query(
+      "SELECT poc_email FROM vendor_master WHERE password_reset_token = ? AND is_delete = 0",
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Invalid or expired setup token" });
+    }
+
+    res.status(200).json({ success: true, email: rows[0].poc_email });
+  } catch (error) {
+    console.error("Vendor Setup Info Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/vendor/auth/send-setup-otp:
+ *   post:
+ *     summary: Send OTP for vendor password setup
+ *     tags: [Vendor - Auth]
+ */
+router.post("/send-setup-otp", async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ success: false, message: "Token is required" });
+
+    const [rows] = await pool.query(
+      "SELECT vendor_id, poc_email FROM vendor_master WHERE password_reset_token = ? AND is_delete = 0",
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Invalid or expired setup token" });
+    }
+
+    const vendor = rows[0];
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log(`\n\n=== [DEVELOPMENT] Vendor Setup OTP for ${vendor.poc_email} is: ${otp} ===\n\n`);
+
+    sendEmail({
+      to: vendor.poc_email,
+      subject: "Vendor Portal - Password Setup OTP",
+      text: `Your OTP for password setup is: ${otp}. It is valid for 5 minutes.`,
+      html: `<h3>Password Setup</h3><p>Your OTP is: <b>${otp}</b>.</p><p>It is valid for 5 minutes.</p>`,
+    }).catch(err => console.warn("Background email error:", err));
+
+    await pool.query(
+      "UPDATE vendor_master SET last_otp = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 5 MINUTE) WHERE vendor_id = ?",
+      [otp, vendor.vendor_id]
+    );
+
+    res.status(200).json({ success: true, message: "OTP sent successfully" });
+  } catch (error) {
+    console.error("Vendor Send Setup OTP Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/vendor/auth/set-password:
+ *   post:
+ *     summary: Set password for vendor
+ *     tags: [Vendor - Auth]
+ */
+router.post("/set-password", async (req, res) => {
+  try {
+    const { token, otp, password } = req.body;
+
+    const [rows] = await pool.query(
+      "SELECT vendor_id, last_otp, otp_expiry FROM vendor_master WHERE password_reset_token = ? AND is_delete = 0",
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired token" });
+    }
+
+    const vendor = rows[0];
+
+    if (!vendor.last_otp || vendor.last_otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+    if (new Date(vendor.otp_expiry) < new Date()) {
+      return res.status(400).json({ success: false, message: "OTP has expired" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await pool.query(
+      "UPDATE vendor_master SET password_hash = ?, password_reset_token = NULL, password_reset_expiry = NULL, last_otp = NULL, otp_expiry = NULL WHERE vendor_id = ?",
+      [hashedPassword, vendor.vendor_id]
+    );
+
+    res.status(200).json({ success: true, message: "Password set successfully" });
+  } catch (error) {
+    console.error("Vendor Set Password Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
 export default router;
