@@ -19,13 +19,15 @@ export const verifyToken = async (req, res, next) => {
 
     // 2. Optional: Verify session is active in login_sessions
     // For performance, you might not do this on EVERY request, but for high security it's recommended.
-    const [sessions] = await pool.query(
-      "SELECT login_status FROM login_sessions WHERE access_token = ? AND is_current_session = 1",
-      [token]
-    );
+    if (req.user.role !== "Vendor") {
+      const [sessions] = await pool.query(
+        "SELECT login_status FROM login_sessions WHERE access_token = ? AND is_current_session = 1",
+        [token]
+      );
 
-    if (sessions.length === 0 || sessions[0].login_status !== "ACTIVE") {
-      return res.status(401).json({ success: false, message: "Session expired or invalid" });
+      if (sessions.length === 0 || sessions[0].login_status !== "ACTIVE") {
+        return res.status(401).json({ success: false, message: "Session expired or invalid" });
+      }
     }
 
     next();
