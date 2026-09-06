@@ -186,7 +186,7 @@ router.post(
       console.error("create-client error:", error);
       return res.status(500).json({
         success: false,
-        message: "Internal Server Error",
+        message: "Internal Server Error: " + (error.message || error.sqlMessage || error),
       });
     }
   }
