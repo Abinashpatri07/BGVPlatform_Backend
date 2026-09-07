@@ -33,7 +33,15 @@ import apiLogger from "../../middleware/apiLogger.js";
 import { verifyToken } from "../../middleware/authMiddleware.js";
 
 router.use(apiLogger({ sourceService: "Client Admin Portal", destinationService: "Backend API" }));
-router.use(verifyToken);
+
+// Bypass verifyToken for candidate setup routes
+router.use((req, res, next) => {
+  const publicPaths = ['/setup-info', '/send-setup-otp', '/set-password'];
+  if (publicPaths.includes(req.path)) {
+    return next();
+  }
+  return verifyToken(req, res, next);
+});
 
 const sendCandidateWelcomeEmailHelper = (candidateName, candidateEmail, setupToken = null) => {
   const companyName = "Dqnex";
