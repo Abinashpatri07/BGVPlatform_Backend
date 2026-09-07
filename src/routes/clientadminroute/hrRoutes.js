@@ -5,14 +5,17 @@ import validateCreateHR from "../../middleware/clientadmin/validateCreateHR.js";
 
 const router = express.Router();
 import apiLogger from "../../middleware/apiLogger.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 router.use(apiLogger({ sourceService: "Client Admin Portal", destinationService: "Backend API" }));
+router.use(verifyToken);
 
 // ── CREATE HR ────────────────────────────────────────────────
 router.post("/create", validateCreateHR, async (req, res) => {
   try {
     const { empId, firstName, lastName, email, phone, role } = req.body;
-    const clientId = req.body.clientId || 1;
+    const clientId = req.user.client_id;
+    const createdBy = req.user.id;
 
     /* DUPLICATE EMP ID CHECK */
     const [empCheck] = await pool.query(
@@ -81,7 +84,7 @@ router.post("/create", validateCreateHR, async (req, res) => {
         role_id,
         hashedPassword,
         clientId,
-        clientId, // created_by = clientId
+        createdBy, // created_by = logged in user
       ]
     );
 
@@ -102,7 +105,7 @@ router.get("/get-all", async (req, res) => {
     const page  = parseInt(req.query.page)  || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
-    const clientId = 1; // Default client id for mock auth
+    const clientId = req.user.client_id;
 
     const [rows] = await pool.query(
       `SELECT

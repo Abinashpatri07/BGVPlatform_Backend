@@ -30,8 +30,10 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ storage, fileFilter });
 const router = express.Router();
 import apiLogger from "../../middleware/apiLogger.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 router.use(apiLogger({ sourceService: "Client Admin Portal", destinationService: "Backend API" }));
+router.use(verifyToken);
 
 const sendCandidateWelcomeEmailHelper = (candidateName, candidateEmail, setupToken = null) => {
   const companyName = "Dqnex";
@@ -197,14 +199,18 @@ router.post(
       // Generate a temporary candidate_id to satisfy NOT NULL constraint
       const tempId = "TEMP-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
 
+      const clientId = req.user.client_id;
+      const createdBy = req.user.id;
+
       const [result] = await pool.execute(
         `INSERT INTO candidate
           (candidate_id, client_id, created_by_users, candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_experience, candidate_tag, verification_status, is_active, is_delete, created_at, updated_at)
          VALUES
-          (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
         [
           tempId,
-          clientAdminId || null,
+          clientId,
+          createdBy,
           firstName.trim(),
           lastName.trim(),
           email.trim().toLowerCase(),
@@ -962,7 +968,7 @@ router.get(
       const status = req.query.status           || "";
 
       /* ── BUILD WHERE CLAUSE ── */
-      const clientId = 1; // Default client id for mock auth
+      const clientId = req.user.client_id;
       let where  = "WHERE c.is_delete = 0 AND c.client_id = ?";
       const params = [clientId];
 
