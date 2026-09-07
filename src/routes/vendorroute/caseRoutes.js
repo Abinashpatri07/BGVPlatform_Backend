@@ -226,5 +226,48 @@ router.get("/drug/:caseId", verifyToken, async (req, res) => {
   }
 });
 
-export default router;
+/**
+ * POST /api/vendor/cases/:caseId/verify
+ * Vendor submits verification decision and remarks
+ */
+router.post("/:caseId/verify", verifyToken, async (req, res) => {
+  try {
+    const vendorId = req.user.id;
+    const { caseId } = req.params;
+    const { decision, remarks } = req.body;
 
+    // Verify the case belongs to this vendor
+    const [cm] = await pool.query(
+      "SELECT case_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      [caseId, vendorId]
+    );
+    if (cm.length === 0) {
+      return res.status(404).json({ success: false, message: "Case not found or unauthorized" });
+    }
+
+    // Map frontend string to status ID
+    let statusId = 4; // Default Verified
+    if (decision === "Unable To Verify") statusId = 5; // Refute
+    else if (decision === "Verification Pending") statusId = 6; // Hold
+    else if (decision === "Partially Verified") statusId = 4; // Or custom if defined
+
+    // If verified or refuted, maybe set completed_date. Let's just set updated_at.
+    const query = `
+      UPDATE case_master 
+      SET 
+        verification_status = ?, 
+        verification_comment = ?,
+        completed_date = CASE WHEN ? IN (4, 5) THEN NOW() ELSE completed_date END
+      WHERE case_id = ? AND vendor_id = ?
+    `;
+
+    await pool.query(query, [statusId, remarks, statusId, caseId, vendorId]);
+
+    res.status(200).json({ success: true, message: "Verification submitted successfully" });
+  } catch (error) {
+    console.error("Error submitting verification:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+export default router;
