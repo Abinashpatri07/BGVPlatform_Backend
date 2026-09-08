@@ -68,8 +68,8 @@ router.post("/login", validateLogin, async (req, res) => {
       let msg = "Invalid email or password";
 
       if (newCount >= 3) {
-        query = "UPDATE users SET login_attempt_count = ?, locked_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE users_id = ?";
-        msg = "Account locked due to 3 failed attempts. Try again in 15 minutes.";
+        query = "UPDATE users SET login_attempt_count = ?, locked_until = DATE_ADD(NOW(), INTERVAL 30 MINUTE) WHERE users_id = ?";
+        msg = "Account locked due to 3 failed attempts. Try again in 30 minutes.";
       }
       
       await pool.query(query, params);
