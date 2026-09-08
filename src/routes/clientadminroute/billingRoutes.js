@@ -37,25 +37,41 @@ router.post("/send-payment-link", async (req, res) => {
     const amount = packageInfo.price;
 
 
-    // 1. Generate sequential invoice number (e.g., INV-2026-0001)
+    // 1. Fetch company name for invoice prefix
+    const [clientRows] = await connection.query(
+      "SELECT company_name FROM client_master WHERE client_id = ?",
+      [clientId]
+    );
+    let companyPrefix = "CMPY";
+    if (clientRows.length > 0 && clientRows[0].company_name) {
+      const name = clientRows[0].company_name;
+      const words = name.trim().split(/\s+/);
+      if (words.length > 1) {
+        companyPrefix = words.map(w => w[0].toUpperCase()).join('').substring(0, 4);
+      } else {
+        companyPrefix = name.substring(0, 4).toUpperCase();
+      }
+    }
+
+    // 2. Generate sequential invoice number (e.g., INV-INFO-2026-0001)
     const currentYear = new Date().getFullYear();
     const [lastInvoiceRows] = await connection.query(
       `SELECT invoice_number FROM billing_invoice 
        WHERE invoice_number LIKE ? 
        ORDER BY invoice_id DESC LIMIT 1`,
-      [`INV-${currentYear}-%`]
+      [`INV-${companyPrefix}-${currentYear}-%`]
     );
 
     let nextSequence = 1;
     if (lastInvoiceRows.length > 0) {
       const lastInvoiceNumber = lastInvoiceRows[0].invoice_number;
       const parts = lastInvoiceNumber.split('-');
-      if (parts.length === 3) {
-        nextSequence = parseInt(parts[2], 10) + 1;
+      if (parts.length === 4) {
+        nextSequence = parseInt(parts[3], 10) + 1;
       }
     }
     const sequenceStr = nextSequence.toString().padStart(4, '0');
-    const invoiceNumber = `INV-${currentYear}-${sequenceStr}`;
+    const invoiceNumber = `INV-${companyPrefix}-${currentYear}-${sequenceStr}`;
     const [invoiceResult] = await connection.query(
       `INSERT INTO billing_invoice 
         (invoice_number, client_id, package_id, package_code, package_name, package_amount, subtotal, total_amount, payment_status, invoice_status) 
