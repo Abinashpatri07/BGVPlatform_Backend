@@ -2,20 +2,21 @@ import express from "express";
 import { sendEmail } from "../../utils/sendEmail.js";
 import crypto from "crypto";
 import pool from "../../config/db.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // Removed hardcoded PACKAGE_MAP, now fetching from billing_package_master
 
 // TODO: Add verifyToken middleware when JWT is implemented on frontend
-router.post("/send-payment-link", async (req, res) => {
+router.post("/send-payment-link", verifyToken, async (req, res) => {
   const { customerEmail, packageId } = req.body;
 
   if (!customerEmail || !packageId) {
     return res.status(400).json({ success: false, message: "Invalid package or missing email" });
   }
 
-  const clientId = 1; // Mock client ID (matching dashboard implementation)
+  const clientId = req.user?.client_id; // Get client ID from token
 
   let connection;
 
@@ -332,9 +333,9 @@ router.post("/webhook", async (req, res) => {
 });
 
 // GET Purchase History
-router.get("/history", async (req, res) => {
+router.get("/history", verifyToken, async (req, res) => {
   try {
-    const clientId = 1; // Mock auth
+    const clientId = req.user?.client_id; // Get client ID from token
 
     // 1. Get stats
     const [ledgerRows] = await pool.query(
