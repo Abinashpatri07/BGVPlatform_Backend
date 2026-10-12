@@ -200,10 +200,7 @@ router.post("/uan", async (req, res) => {
 router.post("/consent", async (req, res) => {
   try {
     const { cand_id = 1, client_id = 1, latitude, longitude } = req.body;
-    
-    if (!latitude || !longitude) {
-      return res.status(400).json({ error: "Location (latitude/longitude) is required for consent" });
-    }
+    // Note: latitude/longitude are optional — if browser denies location, consent is still recorded
 
     const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || 'Unknown';
     const datetime = new Date();
@@ -222,8 +219,8 @@ router.post("/consent", async (req, res) => {
       candidate_id, 
       client_id, 
       2, 
-      latitude, 
-      longitude, 
+      latitude || null, 
+      longitude || null, 
       ipAddress,
       formattedDateTime
     ]);
@@ -403,10 +400,7 @@ router.post("/uan", async (req, res) => {
 router.post("/consent", async (req, res) => {
   try {
     const { cand_id = 1, client_id = 1, latitude, longitude } = req.body;
-    
-    if (!latitude || !longitude) {
-      return res.status(400).json({ error: "Location (latitude/longitude) is required for consent" });
-    }
+    // Note: latitude/longitude are optional — if browser denies location, consent is still recorded
 
     const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || 'Unknown';
     const datetime = new Date();
@@ -425,8 +419,8 @@ router.post("/consent", async (req, res) => {
       candidate_id, 
       client_id, 
       2, 
-      latitude, 
-      longitude, 
+      latitude || null, 
+      longitude || null, 
       ipAddress,
       formattedDateTime
     ]);
@@ -437,6 +431,7 @@ router.post("/consent", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error: " + error.message });
   }
 });
+
 
 
 

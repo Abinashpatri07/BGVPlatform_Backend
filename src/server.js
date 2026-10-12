@@ -52,6 +52,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
 
 /* SWAGGER DOCS */
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -131,4 +132,48 @@ pool.getConnection()
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+/* ───────── DIGILOCKER OAUTH BRIDGE (Port 8003) ───────── */
+import http from "http";
+
+const bridgeServer = http.createServer((req, res) => {
+  try {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost:8003"}`);
+    if (parsedUrl.pathname === "/doc.php") {
+      const code = parsedUrl.searchParams.get("code");
+      const state = parsedUrl.searchParams.get("state");
+      const error = parsedUrl.searchParams.get("error");
+      const error_description = parsedUrl.searchParams.get("error_description");
+      const frontendBase = process.env.FRONTEND_URL || "http://localhost:5173";
+
+      if (error) {
+        res.writeHead(302, {
+          Location: `${frontendBase}/candidate/digilocker/callback?error=${encodeURIComponent(error)}&error_description=${encodeURIComponent(error_description || "")}`
+        });
+        return res.end();
+      }
+
+      res.writeHead(302, {
+        Location: `${frontendBase}/candidate/digilocker/callback?code=${encodeURIComponent(code || "")}&state=${encodeURIComponent(state || "")}`
+      });
+      return res.end();
+    }
+  } catch (err) {
+    console.error("Bridge Error:", err);
+  }
+
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not Found");
+});
+
+bridgeServer.listen(8003, "0.0.0.0", () => {
+  console.log("DigiLocker OAuth Bridge running on port 8003 for /doc.php 🚀");
+});
+bridgeServer.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.warn("Port 8003 already in use by another process. Bridge server not started.");
+  } else {
+    console.error("Bridge server error:", err.message);
+  }
 });

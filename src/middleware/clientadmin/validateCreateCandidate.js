@@ -29,10 +29,16 @@ const validateCreateCandidate = (req, res, next) => {
   }
 
   /* PHONE */
-  if (!phone?.trim()) {
+  let cleanPhone = phone ? phone.toString().trim().replace(/[\s\-()+]/g, "") : "";
+  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) {
+    cleanPhone = cleanPhone.slice(2);
+  }
+  req.body.phone = cleanPhone;
+
+  if (!cleanPhone) {
     errors.phone = "Phone number is required";
-  } else if (!/^[0-9]{10}$/.test(phone)) {
-    errors.phone = "Phone must be exactly 10 digits";
+  } else if (!/^[0-9]{10,15}$/.test(cleanPhone)) {
+    errors.phone = "Phone must be a valid number (10 to 15 digits)";
   }
 
   /* EMAIL */
@@ -43,12 +49,14 @@ const validateCreateCandidate = (req, res, next) => {
   }
 
   /* CLIENT ADMIN ID */
-  if (!clientAdminId) {
+  const effectiveClientAdminId = clientAdminId || req.user?.id;
+  if (!effectiveClientAdminId) {
     errors.clientAdminId = "Client Admin ID is required";
   }
 
   /* CM ID (Client Company) */
-  if (!cmId) {
+  const effectiveCmId = cmId || req.user?.client_id;
+  if (!effectiveCmId) {
     errors.cmId = "Client company ID is required";
   }
 

@@ -207,8 +207,9 @@ router.post(
       // Generate a temporary candidate_id to satisfy NOT NULL constraint
       const tempId = "TEMP-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
 
-      const clientId = req.user.client_id;
-      const createdBy = req.user.id;
+      const clientId = req.user?.client_id || req.body.cmId || 1;
+      const createdBy = req.user?.id || req.body.clientAdminId || 2;
+      const phoneToSave = req.body.phone || phone.trim();
 
       const [result] = await pool.execute(
         `INSERT INTO candidate
@@ -222,7 +223,7 @@ router.post(
           firstName.trim(),
           lastName.trim(),
           email.trim().toLowerCase(),
-          phone.trim(),
+          phoneToSave,
           jobFunction || null,
           candidateExperience ? Number(candidateExperience) : 1,
           tag || null,
@@ -268,6 +269,11 @@ router.post(
       return res.status(201).json({
         success: true,
         message: "Candidate Created Successfully",
+        caseId: finalCandidateId,
+        data: {
+          cand_id: newCandId,
+          case_id: finalCandidateId
+        }
       });
 
     } catch (err) {

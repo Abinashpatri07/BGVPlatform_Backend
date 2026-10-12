@@ -46,17 +46,16 @@ const validateCreateCandidate = (
   }
 
   /* PHONE */
-  if (!phone?.trim()) {
+  let cleanPhone = phone ? phone.toString().trim().replace(/[\s\-()+]/g, "") : "";
+  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) {
+    cleanPhone = cleanPhone.slice(2);
+  }
+  req.body.phone = cleanPhone;
 
-    errors.phone =
-      "Phone number is required";
-
-  } else if (
-    !/^[0-9]{10}$/.test(phone)
-  ) {
-
-    errors.phone =
-      "Phone number must be exactly 10 digits";
+  if (!cleanPhone) {
+    errors.phone = "Phone number is required";
+  } else if (!/^[0-9]{10,15}$/.test(cleanPhone)) {
+    errors.phone = "Phone number must be between 10 and 15 digits";
   }
 
   /* EMAIL */
