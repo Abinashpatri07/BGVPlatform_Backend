@@ -9,7 +9,7 @@ import pool from "../../config/db.js";
 const router = express.Router();
 
 // DigiLocker / MeriPehchaan Credentials
-const DIGILOCKER_CLIENT_ID = process.env.DIGILOCKER_CLIENT_ID || "MNRNJVXE";
+const DIGILOCKER_CLIENT_ID = process.env.DIGILOCKER_CLIENT_ID || "com.hedgeverify";
 const DIGILOCKER_CLIENT_SECRET = process.env.DIGILOCKER_CLIENT_SECRET || "4ea7f92b2aaa68726457";
 const DIGILOCKER_REDIRECT_URI = process.env.DIGILOCKER_REDIRECT_URI || "http://localhost:8003/doc.php";
 const DIGILOCKER_BASE_URL = process.env.DIGILOCKER_BASE_URL || "https://digilocker.meripehchaan.gov.in/public";
