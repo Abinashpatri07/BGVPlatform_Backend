@@ -10,7 +10,7 @@ const router = express.Router();
 
 // DigiLocker / MeriPehchaan Credentials
 const DIGILOCKER_CLIENT_ID = process.env.DIGILOCKER_CLIENT_ID || "com.hedgeverify";
-const DIGILOCKER_CLIENT_SECRET = process.env.DIGILOCKER_CLIENT_SECRET || "4ea7f92b2aaa68726457";
+const DIGILOCKER_CLIENT_SECRET = process.env.DIGILOCKER_CLIENT_SECRET || "2ca7af00885d6a1ab16e9582ee848a27b63d75e29ccd6e17b1d1c46a5f690f80";
 const DIGILOCKER_REDIRECT_URI = process.env.DIGILOCKER_REDIRECT_URI || "http://localhost:8003/doc.php";
 const DIGILOCKER_BASE_URL = process.env.DIGILOCKER_BASE_URL || "https://digilocker.meripehchaan.gov.in/public";
 

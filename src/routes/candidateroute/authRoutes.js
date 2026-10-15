@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback_super_secret_key";
 
 /**
  * POST /api/candidate/auth/login
- * Candidate Login
+ * Step 1: Verify email+password → send OTP to email
  */
 router.post("/login", async (req, res) => {
   try {
@@ -20,7 +20,7 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and password are required." });
     }
 
-    // Find user with role = candidate and get candidate experience
+    // Find candidate user
     const [rows] = await pool.query(
       `SELECT u.*, c.candidate_experience, c.cand_id 
        FROM users u
@@ -35,7 +35,7 @@ router.post("/login", async (req, res) => {
 
     const user = rows[0];
 
-    // Check if this user is actually a candidate
+    // Check role
     if (user.role_name !== "candidate") {
       return res.status(403).json({
         success: false,
@@ -48,6 +48,92 @@ router.post("/login", async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log(`\n\n=== [DEVELOPMENT] OTP for Candidate ${email} is: ${otp} ===\n\n`);
+
+    // Send OTP email
+    await sendEmail({
+      to: email,
+      subject: "Candidate Portal - Login OTP",
+      text: `Your OTP for login is: ${otp}. It is valid for 5 minutes.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
+          <h2 style="color: #1e1b8b; margin-bottom: 4px;">BGV Candidate Portal</h2>
+          <p style="color: #6b7280; font-size: 14px;">Login Verification</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;" />
+          <p style="color: #374151; font-size: 15px;">Your One-Time Password (OTP) for login is:</p>
+          <div style="font-size: 36px; font-weight: 800; letter-spacing: 12px; color: #1e1b8b; text-align: center; padding: 16px 0;">
+            ${otp}
+          </div>
+          <p style="color: #6b7280; font-size: 13px; text-align: center;">This OTP is valid for <strong>5 minutes</strong>. Do not share it with anyone.</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;" />
+          <p style="color: #9ca3af; font-size: 12px;">If you did not attempt to login, please ignore this email.</p>
+        </div>
+      `,
+    });
+
+    // Save OTP in DB
+    await pool.query(
+      "UPDATE users SET last_otp = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 5 MINUTE) WHERE users_id = ?",
+      [otp, user.users_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      otpSent: true,
+      message: "OTP sent to your registered email address.",
+      email: user.email, // return email so frontend can use it in step 2
+    });
+
+  } catch (err) {
+    console.error("Candidate Login Error:", err);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
+  }
+});
+
+/**
+ * POST /api/candidate/auth/verify-otp
+ * Step 2: Verify OTP → return JWT token
+ */
+router.post("/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: "Email and OTP are required." });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT u.*, c.candidate_experience, c.cand_id 
+       FROM users u
+       LEFT JOIN candidate c ON u.email = c.candidate_email
+       WHERE u.email = ? AND u.is_delete = 0 AND u.is_active = 1`,
+      [email.trim().toLowerCase()]
+    );
+
+    if (rows.length === 0) {
+      return res.status(401).json({ success: false, message: "User not found." });
+    }
+
+    const user = rows[0];
+
+    // Check OTP
+    if (!user.last_otp || user.last_otp !== otp.toString()) {
+      return res.status(401).json({ success: false, message: "Invalid OTP. Please try again." });
+    }
+
+    // Check OTP expiry
+    if (new Date(user.otp_expiry) < new Date()) {
+      return res.status(401).json({ success: false, message: "OTP has expired. Please login again." });
+    }
+
+    // Clear OTP after successful verification
+    await pool.query(
+      "UPDATE users SET last_otp = NULL, otp_expiry = NULL WHERE users_id = ?",
+      [user.users_id]
+    );
 
     // Generate JWT
     const token = jwt.sign(
@@ -69,8 +155,9 @@ router.post("/login", async (req, res) => {
         cand_id: user.cand_id,
       },
     });
+
   } catch (err) {
-    console.error("Candidate Login Error:", err);
+    console.error("Candidate OTP Verify Error:", err);
     return res.status(500).json({ success: false, message: "Server error. Please try again." });
   }
 });

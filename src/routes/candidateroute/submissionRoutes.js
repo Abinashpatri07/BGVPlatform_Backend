@@ -59,200 +59,8 @@ router.post("/id-documents", async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    for (const doc of documents) {
-      const statusEnum = getVerificationStatus(doc.verification_status);
-      const ocr = doc.ocr_data || {};
-      
-      const pan = doc.doc_type === "PAN card" ? doc.doc_number : null;
-      const passport = doc.doc_type === "Passport" ? doc.doc_number : null;
-      const dl = doc.doc_type === "Driving license" ? doc.doc_number : null;
-      const voter = doc.doc_type === "Voter ID" ? doc.doc_number : null;
-
-      // Extract general fields
-      const cand_full_name = ocr.full_name || (ocr.first_name ? `${ocr.first_name} ${ocr.last_name || ''}`.trim() : null);
-      const cand_father_name = ocr.father_name || null;
-      const cand_dob = parseDate(ocr.date_of_birth);
-      const cand_gender = ocr.gender || null;
-      const cand_nationality = ocr.nationality || null;
-      const cand_birth_place = ocr.place_of_birth || null;
-      const cand_address = ocr.address || null;
-      const cand_blood_group = ocr.blood_group || null;
-      const cand_vehicle_class = ocr.vehicle_class || null;
-
-      // Extract specific fields
-      const pass_issue_date = doc.doc_type === "Passport" ? parseDate(ocr.date_of_issue) : null;
-      const pass_expiry_date = doc.doc_type === "Passport" ? parseDate(ocr.date_of_expiry) : null;
-      const pass_first_name = doc.doc_type === "Passport" ? (ocr.first_name || null) : null;
-      const pass_last_name = doc.doc_type === "Passport" ? (ocr.last_name || null) : null;
-
-      const driv_issue_date = doc.doc_type === "Driving license" ? parseDate(ocr.issued_date) : null;
-      const driv_expiry_date = doc.doc_type === "Driving license" ? parseDate(ocr.expire_date) : null;
-
-      const voter_issue_date = doc.doc_type === "Voter ID" ? parseDate(ocr.date_of_issue) : null;
-
-      const query = `
-        INSERT INTO candidate_identity 
-        (
-          cand_id, candidate_id, client_id, cand_iden_type, iden_verification_status,
-          pan_number, passport_number, driving_number, voter_number,
-          cand_full_name, cand_father_name, cand_dob, cand_gender, cand_nationality,
-          cand_birth_place, cand_address, cand_blood_group, cand_vehicle_class,
-          pass_issue_date, pass_expiry_date, pass_first_name, pass_last_name,
-          driv_issue_date, driv_expiry_date,
-          voter_issue_date
-        ) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-      
-      await conn.query(query, [
-        cand_id,
-        "CAND-" + cand_id, 
-        1, 
-        doc.doc_type,
-        statusEnum,
-        pan,
-        passport,
-        dl,
-        voter,
-        cand_full_name,
-        cand_father_name,
-        cand_dob,
-        cand_gender,
-        cand_nationality,
-        cand_birth_place,
-        cand_address,
-        cand_blood_group,
-        cand_vehicle_class,
-        pass_issue_date,
-        pass_expiry_date,
-        pass_first_name,
-        pass_last_name,
-        driv_issue_date,
-        driv_expiry_date,
-        voter_issue_date
-      ]);
-    }
-
-    await conn.commit();
-    res.status(200).json({ message: "ID Documents submitted successfully" });
-
-  } catch (error) {
-    if (conn) await conn.rollback();
-    console.error("Submit ID Documents Error:", error);
-    res.status(500).json({ error: "Internal Server Error: " + error.message });
-  } finally {
-    if (conn) conn.release();
-  }
-});
-
-/**
- * @swagger
- * /api/candidate/submit/uan:
- *   post:
- *     summary: Submit UAN
- *     tags: [Candidate Submission]
- */
-router.post("/uan", async (req, res) => {
-  try {
-    const { cand_id = 1, has_uan, uan_number } = req.body;
-
-    if (has_uan) {
-      if (!uan_number) {
-        return res.status(400).json({ error: "UAN number is required if candidate has UAN" });
-      }
-      if (!/^\d{12}$/.test(uan_number)) {
-        return res.status(400).json({ error: "UAN must be exactly 12 digits" });
-      }
-    }
-
-    // Try to update existing employment records for this candidate
-    const updateQuery = `
-      UPDATE candidate_employment 
-      SET cand_emp_uan_number = ? 
-      WHERE cand_id = ?
-    `;
-    
-    const [result] = await pool.query(updateQuery, [has_uan ? uan_number : null, cand_id]);
-
-    // If no employment records exist (e.g. they skipped employment step), insert a new record
-    if (result.affectedRows === 0 && has_uan) {
-       const insertQuery = `
-         INSERT INTO candidate_employment (cand_id, candidate_id, client_id, cand_emp_uan_number)
-         VALUES (?, ?, ?, ?)
-       `;
-       await pool.query(insertQuery, [cand_id, "CAND-" + cand_id, 1, uan_number]);
-    }
-
-    res.status(200).json({ message: "UAN saved successfully" });
-  } catch (error) {
-    console.error("Submit UAN Error:", error);
-    res.status(500).json({ error: "Internal Server Error: " + error.message });
-  }
-});
-
-/**
- * @swagger
- * /api/candidate/submit/consent:
- *   post:
- *     summary: Submit Candidate Consent
- *     tags: [Candidate Submission]
- */
-router.post("/consent", async (req, res) => {
-  try {
-    const { cand_id = 1, client_id = 1, latitude, longitude } = req.body;
-    // Note: latitude/longitude are optional — if browser denies location, consent is still recorded
-
-    const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || 'Unknown';
-    const datetime = new Date();
-    const formattedDateTime = datetime.toISOString().slice(0, 19).replace('T', ' ');
-    const candidate_id = "CAND-" + cand_id;
-
-    const query = `
-      INSERT INTO candidate_consent 
-      (cand_id, candidate_id, client_id, cand_consent_status, cand_consent_latitude, cand_consent_longitude, cand_consent_ip_address, cand_consent_datetime) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    
-    // Status 2 = Accepted
-    await pool.query(query, [
-      cand_id, 
-      candidate_id, 
-      client_id, 
-      2, 
-      latitude || null, 
-      longitude || null, 
-      ipAddress,
-      formattedDateTime
-    ]);
-
-    res.status(200).json({ message: "Consent saved successfully" });
-  } catch (error) {
-    console.error("Submit Consent Error:", error);
-    res.status(500).json({ error: "Internal Server Error: " + error.message });
-  }
-});
-
-/**
- * @swagger
- * /api/candidate/submit/employment:
- *   post:
- *     summary: Submit Candidate ID Documents
- *     tags: [Candidate Submission]
- */
-router.post("/id-documents", async (req, res) => {
-  let conn;
-  try {
-    const { cand_id = 1, documents } = req.body; 
-
-    if (!documents || !Array.isArray(documents) || documents.length === 0) {
-      return res.status(400).json({ error: "No documents provided" });
-    }
-
-    conn = await pool.getConnection();
-    await conn.beginTransaction();
-
-    // Clear old identity records for this candidate before inserting new ones
-    await conn.query(`DELETE FROM candidate_identity WHERE cand_id = ?`, [cand_id]);
+    // Clear old identity records for these ID types before inserting new ones (preserves Aadhaar Card)
+    await conn.query(`DELETE FROM candidate_identity WHERE cand_id = ? AND cand_iden_type IN ('Passport', 'PAN card', 'Driving license', 'Voter ID')`, [cand_id]);
 
     const case_id = null;
 
@@ -699,6 +507,13 @@ router.post("/employment", upload.any(), async (req, res) => {
     const client_id = 1;
     const files = req.files || [];
 
+    // Fetch existing UAN number if present before clearing records so UAN is not lost
+    const [existingUanRows] = await pool.query(
+      `SELECT cand_emp_uan_number FROM candidate_employment WHERE cand_id = ? AND cand_emp_uan_number IS NOT NULL LIMIT 1`,
+      [cand_id]
+    );
+    const existingUan = (existingUanRows && existingUanRows.length > 0) ? existingUanRows[0].cand_emp_uan_number : null;
+
     // Clear old employment records for this candidate (if it's a fresh submission)
     await pool.query(`DELETE FROM candidate_employment WHERE cand_id = ?`, [cand_id]);
 
@@ -718,17 +533,43 @@ router.post("/employment", upload.any(), async (req, res) => {
         cand_emp_designation,
         cand_emp_from_date,
         cand_emp_to_date,
-        cand_emp_joining
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cand_emp_joining,
+        cand_emp_payslip,
+        cand_emp_service,
+        cand_emp_uan_number
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     for (let index = 0; index < employmentArray.length; index++) {
       const emp = employmentArray[index];
       const certFile = files.find(f => f.fieldname === `certificateFile_${index}`);
-      const existingFileUrl = req.body[`existingFileUrl_${index}`];
-      const certPath = certFile ? certFile.path : (existingFileUrl || null);
+      const joiningFile = files.find(f => f.fieldname === `joiningLetterFile_${index}`);
+      const relievingFile = files.find(f => f.fieldname === `relievingLetterFile_${index}`);
+      const serviceFile = files.find(f => f.fieldname === `serviceLetterFile_${index}`);
+
+      const certPath = certFile ? certFile.path : (req.body[`existingCertificateUrl_${index}`] || null);
+      const joiningPath = joiningFile ? joiningFile.path : (req.body[`existingJoiningUrl_${index}`] || certPath || null);
+      const relievingPath = relievingFile ? relievingFile.path : (req.body[`existingRelievingUrl_${index}`] || null);
+      const servicePath = serviceFile ? serviceFile.path : (req.body[`existingServiceUrl_${index}`] || null);
       
       const empType = emp.isInternship ? "Internship" : "Employment";
+
+      // Validate mandatory documents
+      if (empType === "Internship") {
+        if (!certPath) {
+          return res.status(400).json({ error: `Internship Certificate is mandatory for ${emp.companyName || 'Record ' + (index + 1)}` });
+        }
+      } else {
+        if (!joiningPath) {
+          return res.status(400).json({ error: `Joining Letter is mandatory for ${emp.companyName || 'Record ' + (index + 1)}` });
+        }
+        if (!relievingPath) {
+          return res.status(400).json({ error: `Relieving Letter is mandatory for ${emp.companyName || 'Record ' + (index + 1)}` });
+        }
+        if (!servicePath) {
+          return res.status(400).json({ error: `Service Letter is mandatory for ${emp.companyName || 'Record ' + (index + 1)}` });
+        }
+      }
 
       await pool.query(query, [
         cand_id,
@@ -743,7 +584,10 @@ router.post("/employment", upload.any(), async (req, res) => {
         emp.designation || null,
         parseDate(emp.fromDate) || null,
         parseDate(emp.toDate) || null,
-        certPath
+        joiningPath,
+        relievingPath,
+        servicePath,
+        existingUan
       ]);
     }
 
