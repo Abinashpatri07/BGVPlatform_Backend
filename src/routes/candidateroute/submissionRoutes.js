@@ -396,16 +396,27 @@ router.post("/final", async (req, res) => {
         // Check if there are records in this table for the candidate
         const [rows] = await pool.query(`SELECT COUNT(*) as count FROM \`${mod.table}\` WHERE cand_id = ?`, [cand_id]);
         if (rows[0].count > 0) {
-          // Create a new case in case_master
-          const insertQuery = `
-            INSERT INTO case_master (cand_id, candidate_id, client_id, case_type)
-            VALUES (?, ?, ?, ?)
-          `;
-          const [result] = await pool.query(insertQuery, [cand_id, candidate_id, client_id, mod.type]);
-          const newCaseId = result.insertId;
+          // Check if case already exists for this candidate and module type to avoid duplicate cases
+          const [existingCase] = await pool.query(
+            `SELECT case_id FROM case_master WHERE cand_id = ? AND case_type = ? ORDER BY case_id DESC LIMIT 1`,
+            [cand_id, mod.type]
+          );
 
-          // Update the child table with the generated case_id
-          await pool.query(`UPDATE \`${mod.table}\` SET case_id = ? WHERE cand_id = ?`, [newCaseId, cand_id]);
+          let currentCaseId;
+          if (existingCase && existingCase.length > 0) {
+            currentCaseId = existingCase[0].case_id;
+          } else {
+            // Create a new case in case_master only if one doesn't already exist
+            const insertQuery = `
+              INSERT INTO case_master (cand_id, candidate_id, client_id, case_type)
+              VALUES (?, ?, ?, ?)
+            `;
+            const [result] = await pool.query(insertQuery, [cand_id, candidate_id, client_id, mod.type]);
+            currentCaseId = result.insertId;
+          }
+
+          // Update the child table with the case_id
+          await pool.query(`UPDATE \`${mod.table}\` SET case_id = ? WHERE cand_id = ?`, [currentCaseId, cand_id]);
         }
       } catch (err) {
         console.warn(`Failed to generate case for table ${mod.table}:`, err.message);
