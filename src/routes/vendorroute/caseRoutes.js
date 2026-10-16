@@ -138,10 +138,17 @@ router.get("/education/:caseId", verifyToken, async (req, res) => {
       [cm[0].cand_id]
     );
 
-    const [eduRows] = await pool.query(
-      "SELECT * FROM candidate_education WHERE cand_id = ? AND case_id = ?",
-      [cm[0].cand_id, caseId]
+    let [eduRows] = await pool.query(
+      "SELECT * FROM candidate_education WHERE case_id = ? ORDER BY cand_edu_id",
+      [caseId]
     );
+    if (eduRows.length === 0) {
+      const [eduFallback] = await pool.query(
+        "SELECT * FROM candidate_education WHERE cand_id = ? ORDER BY cand_edu_id",
+        [cm[0].cand_id]
+      );
+      eduRows = eduFallback;
+    }
 
     res.status(200).json({
       success: true,
@@ -174,10 +181,17 @@ router.get("/employment/:caseId", verifyToken, async (req, res) => {
       [cm[0].cand_id]
     );
 
-    const [empRows] = await pool.query(
-      "SELECT * FROM candidate_employment WHERE cand_id = ? AND case_id = ?",
-      [cm[0].cand_id, caseId]
+    let [empRows] = await pool.query(
+      "SELECT * FROM candidate_employment WHERE case_id = ? ORDER BY cand_emp_id",
+      [caseId]
     );
+    if (empRows.length === 0) {
+      const [empFallback] = await pool.query(
+        "SELECT * FROM candidate_employment WHERE cand_id = ? ORDER BY cand_emp_id",
+        [cm[0].cand_id]
+      );
+      empRows = empFallback;
+    }
 
     res.status(200).json({
       success: true,
@@ -210,10 +224,17 @@ router.get("/drug/:caseId", verifyToken, async (req, res) => {
       [cm[0].cand_id]
     );
 
-    const [drugRows] = await pool.query(
-      "SELECT * FROM candidate_drug WHERE cand_id = ? AND case_id = ?",
-      [cm[0].cand_id, caseId]
+    let [drugRows] = await pool.query(
+      "SELECT * FROM candidate_drug WHERE case_id = ? ORDER BY cand_drug_id",
+      [caseId]
     );
+    if (drugRows.length === 0) {
+      const [drugFallback] = await pool.query(
+        "SELECT * FROM candidate_drug WHERE cand_id = ? ORDER BY cand_drug_id",
+        [cm[0].cand_id]
+      );
+      drugRows = drugFallback;
+    }
 
     res.status(200).json({
       success: true,
@@ -222,6 +243,129 @@ router.get("/drug/:caseId", verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching drug test details:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/vendor/cases/criminal/:caseId
+ * Returns criminal check records for a case
+ */
+router.get("/criminal/:caseId", verifyToken, async (req, res) => {
+  try {
+    const vendorId = req.user.id;
+    const { caseId } = req.params;
+
+    const [cm] = await pool.query(
+      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      [caseId, vendorId]
+    );
+    if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
+
+    const [candidate] = await pool.query(
+      "SELECT candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_tag FROM candidate WHERE cand_id = ?",
+      [cm[0].cand_id]
+    );
+
+    let [crimRows] = await pool.query(
+      "SELECT * FROM candidate_criminal WHERE case_id = ? ORDER BY cand_crim_id",
+      [caseId]
+    );
+    if (crimRows.length === 0) {
+      const [crimFallback] = await pool.query(
+        "SELECT * FROM candidate_criminal WHERE cand_id = ? ORDER BY cand_crim_id",
+        [cm[0].cand_id]
+      );
+      crimRows = crimFallback;
+    }
+
+    res.status(200).json({
+      success: true,
+      candidate: candidate[0] || {},
+      criminal: crimRows[0] || null,
+      records: crimRows
+    });
+  } catch (error) {
+    console.error("Error fetching criminal details:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/vendor/cases/reference/:caseId
+ * Returns reference check records for a case
+ */
+router.get("/reference/:caseId", verifyToken, async (req, res) => {
+  try {
+    const vendorId = req.user.id;
+    const { caseId } = req.params;
+
+    const [cm] = await pool.query(
+      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      [caseId, vendorId]
+    );
+    if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
+
+    const [candidate] = await pool.query(
+      "SELECT candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_tag FROM candidate WHERE cand_id = ?",
+      [cm[0].cand_id]
+    );
+
+    let [refRows] = await pool.query(
+      "SELECT * FROM candidate_reference WHERE case_id = ? ORDER BY cand_ref_id",
+      [caseId]
+    );
+    if (refRows.length === 0) {
+      const [refFallback] = await pool.query(
+        "SELECT * FROM candidate_reference WHERE cand_id = ? ORDER BY cand_ref_id",
+        [cm[0].cand_id]
+      );
+      refRows = refFallback;
+    }
+
+    res.status(200).json({
+      success: true,
+      candidate: candidate[0] || {},
+      records: refRows
+    });
+  } catch (error) {
+    console.error("Error fetching reference details:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/vendor/cases/identity/:caseId
+ * Returns identity verification records for a case
+ */
+router.get("/identity/:caseId", verifyToken, async (req, res) => {
+  try {
+    const vendorId = req.user.id;
+    const { caseId } = req.params;
+
+    const [cm] = await pool.query(
+      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      [caseId, vendorId]
+    );
+    if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
+
+    const [candidate] = await pool.query(
+      "SELECT candidate_first_name, candidate_last_name, candidate_email, candidate_mobile, candidate_function, candidate_tag FROM candidate WHERE cand_id = ?",
+      [cm[0].cand_id]
+    );
+
+    let [identRows] = await pool.query(
+      "SELECT * FROM candidate_identity WHERE case_id = ? OR (case_id IS NULL AND cand_id = ?) ORDER BY cand_iden_id",
+      [caseId, cm[0].cand_id]
+    );
+
+    res.status(200).json({
+      success: true,
+      candidate: candidate[0] || {},
+      records: identRows
+    });
+  } catch (error) {
+    console.error("Error fetching identity details:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 });

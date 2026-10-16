@@ -379,6 +379,20 @@ router.get("/:id", async (req, res) => {
       v.coverage_state4, v.coverage_state5,
     ].filter(Boolean);
 
+    // Build structured coverage areas (state + city IDs per state)
+    const coverageAreas = [];
+    for (let i = 1; i <= 5; i++) {
+      const stateId = v[`coverage_state${i}`];
+      if (stateId) {
+        const cityIds = [];
+        for (let j = 1; j <= 5; j++) {
+          const cityId = v[`coverage_state${i}_city${j}`];
+          if (cityId) cityIds.push(cityId);
+        }
+        coverageAreas.push({ stateId, cityIds });
+      }
+    }
+
     const statusVal = v.is_suspend === 1 ? "Suspended"
                     : v.is_active === 2  ? "Inactive"
                     : "Active";
@@ -400,6 +414,7 @@ router.get("/:id", async (req, res) => {
         poc_email: v.poc_email,
         poc_mobile: v.poc_mobile,
         coverage_states: coverageStates,
+        coverage_areas: coverageAreas,
         services,
         status: statusVal,
         created_at: v.created_at,
@@ -451,6 +466,7 @@ router.patch(
       const { id } = req.params;
       const {
         vendorName,
+        cin,
         gst,
         states,
         cities,
@@ -526,14 +542,14 @@ router.patch(
       /* ── UPDATE VENDOR ── */
       await pool.query(
         `UPDATE vendor_master SET
-          company_name = ?, gst_number = ?,
+          company_name = ?, cin = ?, gst_number = ?,
           poc_first_name = ?, poc_last_name = ?, poc_email = ?, poc_mobile = ?,
           coverage_state1 = ?, coverage_state2 = ?, coverage_state3 = ?, coverage_state4 = ?, coverage_state5 = ?,
           address_ver = ?, address_ver_sla = ?, education_ver = ?, education_ver_sla = ?, employment_ver = ?, employment_ver_sla = ?,
           criminal_ver = ?, criminal_ver_sla = ?, drug_ver = ?, drug_ver_sla = ?
          WHERE vendor_id = ?`,
         [
-          vendorName.trim(), gst?.trim().toUpperCase(),
+          vendorName.trim(), cin?.trim().toUpperCase() || null, gst?.trim().toUpperCase(),
           firstName, lastName, email.trim().toLowerCase(), fullPhone,
           coverageStates[0], coverageStates[1], coverageStates[2], coverageStates[3], coverageStates[4],
           srv.address_ver, srv.address_ver_sla, srv.education_ver, srv.education_ver_sla, srv.employment_ver, srv.employment_ver_sla,

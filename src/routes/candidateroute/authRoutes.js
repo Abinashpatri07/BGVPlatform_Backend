@@ -180,8 +180,7 @@ router.post("/forgot-password", async (req, res) => {
     );
 
     if (rows.length === 0) {
-      // Return a generic success to prevent email enumeration or a specific error depending on preference.
-      return res.status(404).json({ success: false, message: "No active candidate account found with this email." });
+      return res.status(404).json({ success: false, message: "Account not with this email-id" });
     }
 
     const user = rows[0];

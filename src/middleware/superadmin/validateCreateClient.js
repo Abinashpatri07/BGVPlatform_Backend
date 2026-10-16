@@ -106,18 +106,17 @@ const validateCreateClient = (req, res, next) => {
     errors.phone = "Phone number must be 10 digits";
   }
 
-  /* PLAN */
+  /* PLAN (optional, default to standard) */
   const validPlans = [
     "starter",
     "standard",
     "premium",
   ];
 
-  if (!plan?.trim()) {
-    errors.plan = "Plan is required";
-
-  } else if (!validPlans.includes(plan)) {
+  if (plan?.trim() && !validPlans.includes(plan)) {
     errors.plan = "Invalid plan selected";
+  } else if (!req.body.plan) {
+    req.body.plan = "standard";
   }
 
   /* RETURN ERRORS */

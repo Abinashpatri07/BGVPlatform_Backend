@@ -31,6 +31,7 @@ import hrTableRoutes from "./routes/hrroute/tableRoutes.js";
 // ───────── VENDOR ─────────
 import vendorAuthRoutes from "./routes/vendorroute/authRoutes.js";
 import vendorCaseRoutes from "./routes/vendorroute/caseRoutes.js";
+import vendorBillingRoutes from "./routes/vendorroute/billingRoutes.js";
 
 // ───────── CANDIDATE ─────────
 import candidateSubmissionRoutes from "./routes/candidateroute/submissionRoutes.js";
@@ -106,6 +107,7 @@ app.use("/api/client-admin/billing", clientAdminBillingRoutes);
 /* ───────── VENDOR ROUTES ───────── */
 app.use("/api/vendor/auth", vendorAuthRoutes);
 app.use("/api/vendor/cases", vendorCaseRoutes);
+app.use("/api/vendor/billing", vendorBillingRoutes);
 
 
 

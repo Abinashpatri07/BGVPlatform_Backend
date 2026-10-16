@@ -3,6 +3,7 @@ import validateLogin from "../../middleware/clientadmin/validateLogin.js";
 import pool from "../../config/db.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "../../utils/sendEmail.js";
 
 const router = express.Router();
@@ -360,6 +361,82 @@ router.post("/set-password", async (req, res) => {
   } catch (err) {
     console.error("Set Password Error:", err);
     return res.status(500).json({ success: false, message: "Server error." });
+  }
+});
+
+/**
+ * @swagger
+ * /api/client-admin/auth/forgot-password:
+ *   post:
+ *     summary: Request a password reset link for Client Admin
+ *     tags: [Client Admin - Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ */
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required." });
+    }
+
+    const [rows] = await pool.query(
+      "SELECT * FROM users WHERE email = ? AND role_name = 'Client Admin' AND is_delete = 0 AND is_active = 1",
+      [email.trim().toLowerCase()]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Account not found with this email." });
+    }
+
+    const user = rows[0];
+    const resetToken = uuidv4();
+    const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+    // Unlock account if it was locked, reset attempts, set reset token
+    await pool.query(
+      "UPDATE users SET password_reset_token = ?, password_reset_expiry = ?, login_attempt_count = 0, locked_until = NULL WHERE users_id = ?",
+      [resetToken, tokenExpiry, user.users_id]
+    );
+
+    const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+    const portalUrl = `${baseUrl}/admin/client-setup-password?token=${resetToken}`;
+
+    const emailHtml = `
+      <h3>Client Admin - Password Reset</h3>
+      <p>Dear ${user.first_name || "Client Admin"},</p>
+      <p>We received a request to set or reset your password for the Client Admin Portal.</p>
+      <p>Click the link below to securely set your password. This link is valid for 48 hours.</p>
+      <p><a href="${portalUrl}" style="padding: 10px 15px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 5px;">Set / Reset Password</a></p>
+      <p>Or copy and paste this URL into your browser:</p>
+      <p><a href="${portalUrl}">${portalUrl}</a></p>
+      <p>If you did not request this, you can safely ignore this email.</p>
+      <p>Best regards,<br>The BGV Platform Team</p>
+    `;
+
+    sendEmail({
+      to: email.trim().toLowerCase(),
+      subject: "Client Admin Portal - Password Reset Request",
+      html: emailHtml,
+    }).catch(err => console.error("Client Admin forgot password email failed:", err));
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset link has been sent to your email.",
+    });
+
+  } catch (err) {
+    console.error("Client Admin Forgot Password Error:", err);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
   }
 });
 
