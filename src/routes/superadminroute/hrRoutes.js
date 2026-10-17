@@ -99,7 +99,7 @@ router.post(
       const [result] = await pool.query(
         `INSERT INTO users
           (employee_id, first_name, last_name, username, email, mobile, role_name, role_id, password, client_id, created_by, is_active, is_delete, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 1, 0, NOW(), NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 1, 0, NOW(), NOW())`,
         [
           empId.trim().toUpperCase(),
           firstName.trim(),
