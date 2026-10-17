@@ -3,6 +3,7 @@ import pool from "../../config/db.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendEmail } from "../../utils/sendEmail.js";
+import { v4 as uuidv4 } from "uuid";
 
 const router = express.Router();
 
@@ -332,6 +333,92 @@ router.post("/set-password", async (req, res) => {
   } catch (error) {
     console.error("Vendor Set Password Error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/vendor/auth/forgot-password:
+ *   post:
+ *     summary: Vendor Forgot Password Request
+ *     tags: [Vendor - Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Reset email sent
+ *       404:
+ *         description: Account not found
+ */
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required." });
+    }
+
+    const [rows] = await pool.query(
+      "SELECT * FROM vendor_master WHERE poc_email = ? AND is_delete = 0 AND is_active = 1",
+      [email.trim().toLowerCase()]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "No active vendor account found with this email." });
+    }
+
+    const vendor = rows[0];
+    const resetToken = uuidv4();
+    const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+    // Unlock account if locked and set reset token
+    await pool.query(
+      "UPDATE vendor_master SET password_reset_token = ?, password_reset_expiry = ?, login_attempt_count = 0, locked_until = NULL WHERE vendor_id = ?",
+      [resetToken, tokenExpiry, vendor.vendor_id]
+    );
+
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const setupUrl = `${baseUrl}/vendor-setup-password?token=${resetToken}`;
+    const pocName = `${vendor.poc_first_name || ""} ${vendor.poc_last_name || ""}`.trim() || "Vendor Partner";
+
+    console.log(`\n\n=== [DEVELOPMENT] Vendor Password Reset Link: ${setupUrl} ===\n\n`);
+
+    const emailHtml = `
+      <h3>Vendor Portal - Password Reset</h3>
+      <p>Dear ${pocName},</p>
+      <p>We received a request to set or reset your password for the Vendor Portal (<b>${vendor.company_name}</b>).</p>
+      <p>Click the link below to securely set your password. This link is valid for 48 hours.</p>
+      <p><a href="${setupUrl}" style="display:inline-block;padding: 10px 18px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Set / Reset Password</a></p>
+      <p>Or copy and paste this URL into your browser:</p>
+      <p><a href="${setupUrl}">${setupUrl}</a></p>
+      <p>If you did not request this, you can safely ignore this email.</p>
+      <br/>
+      <p>Best regards,<br><b>BGV Platform Team</b></p>
+    `;
+
+    sendEmail({
+      to: email.trim().toLowerCase(),
+      subject: "Vendor Portal - Password Reset Request",
+      html: emailHtml,
+    }).catch(err => console.error("Vendor forgot password email failed:", err));
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset link has been sent to your email address."
+    });
+
+  } catch (error) {
+    console.error("Vendor Forgot Password Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
