@@ -1,6 +1,10 @@
 import express from "express";
 import pool from "../../config/db.js";
 import { verifyToken } from "../../middleware/authMiddleware.js";
+import multer from "multer";
+import { getUploadStorage, getUploadedFilePath } from "../../config/cloudinary.js";
+
+const upload = multer({ storage: getUploadStorage() });
 
 const router = express.Router();
 
@@ -374,7 +378,7 @@ router.get("/identity/:caseId", verifyToken, async (req, res) => {
  * POST /api/vendor/cases/:caseId/verify
  * Vendor submits verification decision and remarks
  */
-router.post("/:caseId/verify", verifyToken, async (req, res) => {
+router.post("/:caseId/verify", verifyToken, upload.single("evidenceFile"), async (req, res) => {
   try {
     const vendorId = req.user.id;
     const { caseId } = req.params;
@@ -395,7 +399,12 @@ router.post("/:caseId/verify", verifyToken, async (req, res) => {
     else if (decision === "Verification Pending") statusId = 6; // Hold
     else if (decision === "Partially Verified") statusId = 4; // Or custom if defined
 
-    // If verified or refuted, maybe set completed_date. Let's just set updated_at.
+    const evidencePath = req.file ? getUploadedFilePath(req.file.path) : null;
+    let fullComment = remarks || "";
+    if (evidencePath) {
+      fullComment = fullComment ? `${fullComment}\n[Evidence: ${evidencePath}]` : `[Evidence: ${evidencePath}]`;
+    }
+
     const query = `
       UPDATE case_master 
       SET 
@@ -405,9 +414,9 @@ router.post("/:caseId/verify", verifyToken, async (req, res) => {
       WHERE case_id = ? AND vendor_id = ?
     `;
 
-    await pool.query(query, [statusId, remarks, statusId, caseId, vendorId]);
+    await pool.query(query, [statusId, fullComment, statusId, caseId, vendorId]);
 
-    res.status(200).json({ success: true, message: "Verification submitted successfully" });
+    res.status(200).json({ success: true, message: "Verification submitted successfully", evidenceUrl: evidencePath });
   } catch (error) {
     console.error("Error submitting verification:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
