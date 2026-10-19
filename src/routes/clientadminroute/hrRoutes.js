@@ -164,7 +164,7 @@ router.get("/get-all", async (req, res) => {
 router.get("/get/:id", async (req, res) => {
   try {
     const hrId = parseInt(req.params.id);
-    const clientId = 1;
+    const clientId = req.user.client_id;
     if (!hrId || isNaN(hrId)) {
       return res.status(400).json({ success: false, message: "Invalid HR ID" });
     }
@@ -309,7 +309,7 @@ router.patch("/update/:id", async (req, res) => {
 // ── OVERVIEW STATS ────────────────────────────────────────────
 router.get("/overview", async (req, res) => {
   try {
-    const clientId = 1; // Default client id for mock auth
+    const clientId = req.user.client_id;
     const [[stats]] = await pool.query(
       `SELECT
          COUNT(*) AS total,

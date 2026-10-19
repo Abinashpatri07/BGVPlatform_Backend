@@ -54,6 +54,20 @@ router.post("/login", validateLogin, async (req, res) => {
 
     const user = rows[0];
 
+    // Check if Client Company is Suspended
+    if (user.client_id) {
+      const [clientRows] = await pool.query(
+        "SELECT is_suspend, is_active FROM client_master WHERE client_id = ? AND is_delete = 0",
+        [user.client_id]
+      );
+      if (clientRows.length > 0 && (Number(clientRows[0].is_suspend) === 1 || Number(clientRows[0].is_active) === 2)) {
+        return res.status(403).json({
+          success: false,
+          message: "Your company account has been suspended. Please contact Super Admin support.",
+        });
+      }
+    }
+
     // Check Lock Status
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
       return res.status(403).json({ success: false, message: "Account is locked due to too many failed attempts. Try again later." });
@@ -173,7 +187,8 @@ router.post("/verify-otp", async (req, res) => {
         id: user.users_id,
         name: `${user.first_name} ${user.last_name}`.trim(),
         email: user.email,
-        role: user.role_name
+        role: user.role_name,
+        client_id: user.client_id
       }
     });
 

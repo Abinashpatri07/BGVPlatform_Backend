@@ -607,6 +607,12 @@ router.patch("/suspend/:id", async (req, res) => {
       [reason, id]
     );
 
+    /* Invalidate active sessions for this vendor */
+    await pool.query(
+      `UPDATE login_sessions SET login_status = 'EXPIRED', is_current_session = 0 WHERE user_id = ?`,
+      [id]
+    );
+
     return res.status(200).json({
       success: true,
       message: "Vendor suspended successfully",

@@ -17,7 +17,35 @@ export const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
 
-    // 2. Optional: Verify session is active in login_sessions
+    // 2. Check if Client is Suspended (for client-associated roles)
+    if (req.user.client_id && req.user.role !== "Super Admin") {
+      const [clientRows] = await pool.query(
+        "SELECT is_suspend, is_active FROM client_master WHERE client_id = ? AND is_delete = 0",
+        [req.user.client_id]
+      );
+      if (clientRows.length > 0 && (Number(clientRows[0].is_suspend) === 1 || Number(clientRows[0].is_active) === 2)) {
+        return res.status(403).json({
+          success: false,
+          message: "Client account has been suspended. Please contact Super Admin support.",
+        });
+      }
+    }
+
+    // Check if Vendor is Suspended
+    if (req.user.role === "Vendor" && req.user.id) {
+      const [vendorRows] = await pool.query(
+        "SELECT is_suspend, is_active FROM vendor_master WHERE vendor_id = ? AND is_delete = 0",
+        [req.user.id]
+      );
+      if (vendorRows.length > 0 && (Number(vendorRows[0].is_suspend) === 1 || Number(vendorRows[0].is_active) === 2)) {
+        return res.status(403).json({
+          success: false,
+          message: "Vendor account has been suspended. Please contact Super Admin support.",
+        });
+      }
+    }
+
+    // 3. Optional: Verify session is active in login_sessions
     // For performance, you might not do this on EVERY request, but for high security it's recommended.
     if (req.user.role !== "Vendor") {
       const [sessions] = await pool.query(

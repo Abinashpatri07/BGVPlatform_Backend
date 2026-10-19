@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger.js";
 
@@ -53,7 +55,12 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
-app.use("/uploads", express.static("uploads"));
+
+const uploadsDirectory = path.resolve("uploads");
+if (!fs.existsSync(uploadsDirectory)) {
+  fs.mkdirSync(uploadsDirectory, { recursive: true });
+}
+app.use("/uploads", express.static(uploadsDirectory));
 
 /* SWAGGER DOCS */
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

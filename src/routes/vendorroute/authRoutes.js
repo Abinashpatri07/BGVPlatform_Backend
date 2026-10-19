@@ -47,7 +47,7 @@ router.post("/login", async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      "SELECT * FROM vendor_master WHERE poc_email = ? AND is_active = 1 AND is_suspend != 1 AND is_delete = 0",
+      "SELECT * FROM vendor_master WHERE poc_email = ? AND is_delete = 0",
       [email.trim().toLowerCase()]
     );
 
@@ -56,6 +56,21 @@ router.post("/login", async (req, res) => {
     }
 
     const user = rows[0];
+
+    // Check if Vendor is Suspended or Inactive
+    if (Number(user.is_suspend) === 1 || Number(user.is_active) === 2) {
+      return res.status(403).json({
+        success: false,
+        message: "Your vendor account has been suspended. Please contact Super Admin support.",
+      });
+    }
+
+    if (Number(user.is_active) !== 1) {
+      return res.status(403).json({
+        success: false,
+        message: "Your vendor account is not active. Please contact Super Admin support.",
+      });
+    }
 
     // Check Lock Status
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
@@ -127,12 +142,20 @@ router.post("/verify-otp", async (req, res) => {
     const userAgent = req.headers["user-agent"] || null;
 
     const [users] = await pool.query(
-      "SELECT * FROM vendor_master WHERE poc_email = ? AND is_active = 1 AND is_suspend != 1 AND is_delete = 0",
+      "SELECT * FROM vendor_master WHERE poc_email = ? AND is_delete = 0",
       [email.trim().toLowerCase()]
     );
 
     if (users.length === 0) return res.status(401).json({ success: false, message: "Invalid request" });
     const user = users[0];
+
+    // Check if Vendor is Suspended
+    if (Number(user.is_suspend) === 1 || Number(user.is_active) === 2) {
+      return res.status(403).json({
+        success: false,
+        message: "Your vendor account has been suspended. Please contact Super Admin support.",
+      });
+    }
 
     // Check OTP
     if (!user.last_otp || user.last_otp !== otp) {

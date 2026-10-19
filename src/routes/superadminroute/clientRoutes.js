@@ -341,6 +341,15 @@ router.patch("/suspend-client/:id", async (req, res) => {
       [reason, clientId]
     );
 
+    /* ── RESTRICT & INVALIDATE ALL LOGINS FOR THIS CLIENT ── */
+    await pool.query(
+      `UPDATE login_sessions ls
+       JOIN users u ON ls.user_id = u.users_id
+       SET ls.login_status = 'EXPIRED', ls.is_current_session = 0
+       WHERE u.client_id = ?`,
+      [clientId]
+    );
+
     return res.status(200).json({
       success: true,
       message: "Client suspended successfully",

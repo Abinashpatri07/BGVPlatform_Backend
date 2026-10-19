@@ -22,7 +22,7 @@ router.post("/login", async (req, res) => {
 
     // Find candidate user
     const [rows] = await pool.query(
-      `SELECT u.*, c.candidate_experience, c.cand_id 
+      `SELECT u.*, c.candidate_experience, c.cand_id, COALESCE(u.client_id, c.client_id) AS client_id 
        FROM users u
        LEFT JOIN candidate c ON u.email = c.candidate_email
        WHERE u.email = ? AND u.is_delete = 0 AND u.is_active = 1`,
@@ -34,6 +34,21 @@ router.post("/login", async (req, res) => {
     }
 
     const user = rows[0];
+
+    // Check if Client Company is Suspended
+    const candidateClientId = user.client_id;
+    if (candidateClientId) {
+      const [clientRows] = await pool.query(
+        "SELECT is_suspend, is_active FROM client_master WHERE client_id = ? AND is_delete = 0",
+        [candidateClientId]
+      );
+      if (clientRows.length > 0 && (Number(clientRows[0].is_suspend) === 1 || Number(clientRows[0].is_active) === 2)) {
+        return res.status(403).json({
+          success: false,
+          message: "The hiring company's account is currently suspended. Please contact the company HR or support.",
+        });
+      }
+    }
 
     // Check role
     if (user.role_name !== "candidate") {
