@@ -1,17 +1,9 @@
 import express from "express";
 import pool from "../../config/db.js";
 import multer from "multer";
+import { getUploadStorage, getUploadedFilePath } from "../../config/cloudinary.js";
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    const ext = file.originalname.split('.').pop();
-    cb(null, `candidate_emp_${Date.now()}.${ext}`);
-  },
-});
-const upload = multer({ storage });
+const upload = multer({ storage: getUploadStorage() });
 
 const router = express.Router();
 
@@ -108,7 +100,8 @@ router.post("/id-documents", upload.any(), async (req, res) => {
 
       // Match uploaded file
       const uploadedFile = files.find(f => f.fieldname === `doc_file_${i}` || f.fieldname === `file_${doc.doc_type}` || f.fieldname === doc.doc_type);
-      const docFilePath = uploadedFile ? uploadedFile.path : (doc.cand_iden_docu || req.body[`existingUrl_${doc.doc_type}`] || null);
+      const rawDocFilePath = uploadedFile ? uploadedFile.path : (doc.cand_iden_docu || req.body[`existingUrl_${doc.doc_type}`] || null);
+      const docFilePath = getUploadedFilePath(rawDocFilePath);
 
       const query = `
         INSERT INTO candidate_identity 
@@ -281,7 +274,8 @@ router.post("/drug", upload.single("reportFile"), async (req, res) => {
     const client_id = 1; // Assuming dummy client ID for now
 
     // URL calculation (either uploaded file path or direct URL)
-    const finalReportUrl = req.file ? req.file.path : (reportUrl || null);
+    const rawDrugReportUrl = req.file ? req.file.path : (reportUrl || null);
+    const finalReportUrl = getUploadedFilePath(rawDrugReportUrl);
 
     // Clear old records first
     await pool.query(`DELETE FROM candidate_drug WHERE cand_id = ?`, [cand_id]);
@@ -339,7 +333,8 @@ router.post("/criminal", upload.single("reportFile"), async (req, res) => {
     const client_id = 1; // Assuming dummy client ID for now
 
     // URL calculation (either uploaded file path or direct URL)
-    const finalReportUrl = req.file ? req.file.path : (reportUrl || null);
+    const rawCriminalReportUrl = req.file ? req.file.path : (reportUrl || null);
+    const finalReportUrl = getUploadedFilePath(rawCriminalReportUrl);
 
     // Clear old records first
     await pool.query(`DELETE FROM candidate_criminal WHERE cand_id = ?`, [cand_id]);
@@ -575,10 +570,10 @@ router.post("/employment", upload.any(), async (req, res) => {
       const relievingFile = files.find(f => f.fieldname === `relievingLetterFile_${index}`);
       const serviceFile = files.find(f => f.fieldname === `serviceLetterFile_${index}`);
 
-      const certPath = certFile ? certFile.path : (req.body[`existingCertificateUrl_${index}`] || null);
-      const joiningPath = joiningFile ? joiningFile.path : (req.body[`existingJoiningUrl_${index}`] || certPath || null);
-      const relievingPath = relievingFile ? relievingFile.path : (req.body[`existingRelievingUrl_${index}`] || null);
-      const servicePath = serviceFile ? serviceFile.path : (req.body[`existingServiceUrl_${index}`] || null);
+      const certPath = getUploadedFilePath(certFile ? certFile.path : (req.body[`existingCertificateUrl_${index}`] || null));
+      const joiningPath = getUploadedFilePath(joiningFile ? joiningFile.path : (req.body[`existingJoiningUrl_${index}`] || certPath || null));
+      const relievingPath = getUploadedFilePath(relievingFile ? relievingFile.path : (req.body[`existingRelievingUrl_${index}`] || null));
+      const servicePath = getUploadedFilePath(serviceFile ? serviceFile.path : (req.body[`existingServiceUrl_${index}`] || null));
       
       const empType = emp.isInternship ? "Internship" : "Employment";
 
@@ -680,11 +675,11 @@ router.post("/education", upload.any(), async (req, res) => {
       // Find certificate and marksheet files
       const matchedCert = files.find(f => f.fieldname === `file_${edu.degree}`);
       const existingCertUrl = req.body[`existingFileUrl_${edu.degree}`];
-      const certPath = matchedCert ? matchedCert.path : (existingCertUrl || null);
+      const certPath = getUploadedFilePath(matchedCert ? matchedCert.path : (existingCertUrl || null));
 
       const matchedMarksheet = files.find(f => f.fieldname === `marksheet_${edu.degree}`);
       const existingMarksheetUrl = req.body[`existingMarksheetUrl_${edu.degree}`];
-      const marksheetPath = matchedMarksheet ? matchedMarksheet.path : (existingMarksheetUrl || null);
+      const marksheetPath = getUploadedFilePath(matchedMarksheet ? matchedMarksheet.path : (existingMarksheetUrl || null));
 
       await pool.query(query, [
         cand_id,
