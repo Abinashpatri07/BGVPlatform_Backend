@@ -416,9 +416,10 @@ router.get("/history", verifyToken, async (req, res) => {
 });
 
 // GET Usage Logs
-router.get("/usage-logs", async (req, res) => {
+router.get("/usage-logs", verifyToken, async (req, res) => {
   try {
-    const clientId = 1;
+    const clientId = req.user?.client_id;
+    if (!clientId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
     // 1. Get stats
     const [ledgerRows] = await pool.query(
@@ -430,46 +431,66 @@ router.get("/usage-logs", async (req, res) => {
       [clientId]
     );
 
-    const totalCredit = ledgerRows[0]?.total_credits || 0;
-    const consumedCredit = ledgerRows[0]?.consumed_credits || 0;
-    const availableCredit = latestLedger.length > 0 ? latestLedger[0].balance_after : 0;
+    const totalCredit = parseFloat(ledgerRows[0]?.total_credits) || 0;
+    const consumedCredit = parseFloat(ledgerRows[0]?.consumed_credits) || 0;
+    const availableCredit = latestLedger.length > 0 ? parseFloat(latestLedger[0].balance_after) : 0;
 
-    // 2. Get usage logs
+    // 2. Get usage logs with candidate name and package name via JOIN
     const [usageRows] = await pool.query(
       `SELECT 
-        transaction_id, 
-        usage_date, 
-        candidate_id, 
-        package_id, 
-        units_consumed, 
-        usage_status 
-       FROM billing_usage_log 
-       WHERE client_id = ? 
-       ORDER BY usage_date DESC`,
+        bul.transaction_id,
+        bul.usage_date,
+        bul.candidate_id,
+        bul.package_id,
+        bul.units_consumed,
+        bul.usage_status,
+        bul.verification_type,
+        bul.remarks,
+        CONCAT(c.candidate_first_name, ' ', c.candidate_last_name) AS candidate_name,
+        c.candidate_id AS candidate_code,
+        bpm.package_name
+       FROM billing_usage_log bul
+       LEFT JOIN candidate c ON bul.candidate_id = c.cand_id
+       LEFT JOIN billing_package_master bpm ON bul.package_id = bpm.package_id
+       WHERE bul.client_id = ?
+       ORDER BY bul.usage_date DESC`,
        [clientId]
     );
 
-    // Normally we'd join with candidate and package tables to get names.
-    // For now, we will map candidate_id and package_id to some placeholders or skip if null.
     const logs = usageRows.map(log => {
       const dateObj = new Date(log.usage_date);
-      const dateStr = dateObj.toLocaleDateString('en-GB', { 
-        timeZone: 'Asia/Kolkata', 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
+      const dateStr = dateObj.toLocaleString('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       });
-      
+
       let status = "Pending";
-      if (log.usage_status === "SUCCESS") status = "Paid"; // using Paid as frontend component expects it
+      if (log.usage_status === "SUCCESS") status = "Paid";
       else if (log.usage_status === "FAILED") status = "Failed";
+
+      // Resolve candidate display name
+      let candidateDisplay = "Unknown Candidate";
+      if (log.candidate_name && log.candidate_name.trim() !== " ") {
+        candidateDisplay = log.candidate_name.trim();
+        if (log.candidate_code) candidateDisplay += ` (${log.candidate_code})`;
+      } else if (log.candidate_id) {
+        candidateDisplay = `Candidate #${log.candidate_id}`;
+      }
+
+      // Resolve package/verification type display
+      let packageDisplay = log.package_name || log.verification_type || "Custom Verification";
+      if (log.verification_type === "CANDIDATE_ONBOARD") packageDisplay = "Candidate Onboarding";
 
       return {
         transactionId: log.transaction_id,
         date: dateStr,
-        candidate: log.candidate_id ? `Candidate #${log.candidate_id}` : "Unknown Candidate",
-        package: log.package_id ? `Package #${log.package_id}` : "Custom Verification",
-        unit: `${parseFloat(log.units_consumed)} Units`,
+        candidate: candidateDisplay,
+        package: packageDisplay,
+        unit: `${parseFloat(log.units_consumed)} Unit${parseFloat(log.units_consumed) !== 1 ? 's' : ''}`,
         status: status,
       };
     });

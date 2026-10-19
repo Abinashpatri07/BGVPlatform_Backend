@@ -54,7 +54,7 @@ router.post("/login", async (req, res) => {
     console.log(`\n\n=== [DEVELOPMENT] OTP for Candidate ${email} is: ${otp} ===\n\n`);
 
     // Send OTP email
-    await sendEmail({
+    const emailSent = await sendEmail({
       to: email,
       subject: "Candidate Portal - Login OTP",
       text: `Your OTP for login is: ${otp}. It is valid for 5 minutes.`,
@@ -73,6 +73,14 @@ router.post("/login", async (req, res) => {
         </div>
       `,
     });
+
+    if (!emailSent) {
+      console.error(`Failed to send OTP email to ${email}`);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP to your email address. Please try again.",
+      });
+    }
 
     // Save OTP in DB
     await pool.query(

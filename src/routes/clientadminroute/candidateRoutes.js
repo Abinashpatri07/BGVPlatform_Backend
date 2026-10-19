@@ -266,10 +266,76 @@ router.post(
       // Send Welcome Email automatically on creation
       sendCandidateWelcomeEmailHelper(`${firstName.trim()} ${lastName.trim()}`.trim(), email.trim().toLowerCase(), setupToken);
 
+      // ── BILLING: Credit Deduction on Candidate Creation ──
+      let creditMessage = null;
+      let isOnHold = false;
+      try {
+        // Check current credit balance
+        const [latestLedgerRows] = await pool.query(
+          "SELECT balance_after FROM billing_credit_ledger WHERE client_id = ? ORDER BY credit_ledger_id DESC LIMIT 1",
+          [clientId]
+        );
+        const currentBalance = latestLedgerRows.length > 0 ? parseFloat(latestLedgerRows[0].balance_after) : 0;
+
+        if (currentBalance <= 0) {
+          // No credits — put candidate on hold
+          await pool.execute(
+            `UPDATE candidate SET is_onhold = 1, is_reject = 0, onhold_comment = ?, verification_status = 5, updated_at = NOW() WHERE cand_id = ?`,
+            ["Insufficient billing credits. Please recharge to proceed.", newCandId]
+          );
+          isOnHold = true;
+          creditMessage = "Candidate placed on hold due to insufficient billing credits.";
+        } else {
+          // Deduct 1 credit unit
+          const CREDIT_PER_CANDIDATE = 1;
+          const newBalance = currentBalance - CREDIT_PER_CANDIDATE;
+
+          // Insert deduction entry into billing_credit_ledger
+          const [ledgerInsert] = await pool.execute(
+            `INSERT INTO billing_credit_ledger
+              (client_id, transaction_type, reference_type, reference_id, candidate_id, credit_out, balance_after, description, created_by)
+             VALUES (?, 'CANDIDATE_ONBOARD', 'CANDIDATE', ?, ?, ?, ?, ?, ?)`,
+            [
+              clientId,
+              newCandId,
+              newCandId,
+              CREDIT_PER_CANDIDATE,
+              newBalance,
+              `Candidate onboarded: ${firstName.trim()} ${lastName.trim()} (${finalCandidateId})`,
+              createdBy
+            ]
+          );
+
+          // Insert into billing_usage_log
+          const usageTransactionId = `USAGE-${Date.now()}-${newCandId}`;
+          await pool.execute(
+            `INSERT INTO billing_usage_log
+              (transaction_id, client_id, candidate_id, verification_type, units_consumed, usage_status, credit_ledger_id, remarks, created_by)
+             VALUES (?, ?, ?, 'CANDIDATE_ONBOARD', ?, 'SUCCESS', ?, ?, ?)`,
+            [
+              usageTransactionId,
+              clientId,
+              newCandId,
+              CREDIT_PER_CANDIDATE,
+              ledgerInsert.insertId,
+              `1 credit deducted for candidate onboarding: ${finalCandidateId}`,
+              createdBy
+            ]
+          );
+
+          creditMessage = `1 credit deducted. Remaining balance: ${newBalance}`;
+        }
+      } catch (creditErr) {
+        // Non-blocking — candidate is created, just log the billing error
+        console.error("Credit deduction error (non-fatal):", creditErr);
+      }
+
       return res.status(201).json({
         success: true,
         message: "Candidate Created Successfully",
         caseId: finalCandidateId,
+        isOnHold,
+        creditMessage,
         data: {
           cand_id: newCandId,
           case_id: finalCandidateId

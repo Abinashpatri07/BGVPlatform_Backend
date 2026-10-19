@@ -47,14 +47,24 @@ const parseDate = (dateStr) => {
  *     summary: Submit Candidate ID Documents
  *     tags: [Candidate Submission]
  */
-router.post("/id-documents", async (req, res) => {
+router.post("/id-documents", upload.any(), async (req, res) => {
   let conn;
   try {
-    const { cand_id = 1, documents } = req.body; 
+    let { cand_id = 1, documents } = req.body; 
+
+    if (typeof documents === "string") {
+      try {
+        documents = JSON.parse(documents);
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid documents JSON format" });
+      }
+    }
 
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       return res.status(400).json({ error: "No documents provided" });
     }
+
+    const files = req.files || [];
 
     conn = await pool.getConnection();
     await conn.beginTransaction();
@@ -64,7 +74,8 @@ router.post("/id-documents", async (req, res) => {
 
     const case_id = null;
 
-    for (const doc of documents) {
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i];
       const statusEnum = getVerificationStatus(doc.verification_status);
       const ocr = doc.ocr_data || {};
       
@@ -95,6 +106,10 @@ router.post("/id-documents", async (req, res) => {
 
       const voter_issue_date = doc.doc_type === "Voter ID" ? parseDate(ocr.date_of_issue) : null;
 
+      // Match uploaded file
+      const uploadedFile = files.find(f => f.fieldname === `doc_file_${i}` || f.fieldname === `file_${doc.doc_type}` || f.fieldname === doc.doc_type);
+      const docFilePath = uploadedFile ? uploadedFile.path : (doc.cand_iden_docu || req.body[`existingUrl_${doc.doc_type}`] || null);
+
       const query = `
         INSERT INTO candidate_identity 
         (
@@ -104,9 +119,10 @@ router.post("/id-documents", async (req, res) => {
           cand_birth_place, cand_address, cand_blood_group, cand_vehicle_class,
           pass_issue_date, pass_expiry_date, pass_first_name, pass_last_name,
           driv_issue_date, driv_expiry_date,
-          voter_issue_date
+          voter_issue_date,
+          cand_iden_docu
         ) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       
       await conn.query(query, [
@@ -135,7 +151,8 @@ router.post("/id-documents", async (req, res) => {
         pass_last_name,
         driv_issue_date,
         driv_expiry_date,
-        voter_issue_date
+        voter_issue_date,
+        docFilePath
       ]);
     }
 
@@ -654,15 +671,20 @@ router.post("/education", upload.any(), async (req, res) => {
         cand_edu_grade,
         cand_edu_from_date,
         cand_edu_to_date,
-        cand_edu_certificate
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cand_edu_certificate,
+        cand_edu_marksheet
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     for (const edu of educationArray) {
-      // Find the file associated with this degree type (e.g., 'file_Matriculation')
-      const matchedFile = files.find(f => f.fieldname === `file_${edu.degree}`);
-      const existingFileUrl = req.body[`existingFileUrl_${edu.degree}`];
-      const filePath = matchedFile ? matchedFile.path : (existingFileUrl || null);
+      // Find certificate and marksheet files
+      const matchedCert = files.find(f => f.fieldname === `file_${edu.degree}`);
+      const existingCertUrl = req.body[`existingFileUrl_${edu.degree}`];
+      const certPath = matchedCert ? matchedCert.path : (existingCertUrl || null);
+
+      const matchedMarksheet = files.find(f => f.fieldname === `marksheet_${edu.degree}`);
+      const existingMarksheetUrl = req.body[`existingMarksheetUrl_${edu.degree}`];
+      const marksheetPath = matchedMarksheet ? matchedMarksheet.path : (existingMarksheetUrl || null);
 
       await pool.query(query, [
         cand_id,
@@ -676,7 +698,8 @@ router.post("/education", upload.any(), async (req, res) => {
         edu.percentage || null,
         parseDate(edu.startDate) || null,
         parseDate(edu.endDate) || null,
-        filePath
+        certPath,
+        marksheetPath
       ]);
     }
 
