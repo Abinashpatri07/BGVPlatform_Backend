@@ -545,9 +545,9 @@ router.put(
  */
 router.patch("/on-hold/:id", async (req, res) => {
   try {
-    const candId = parseInt(req.params.id);
+    const rawId = req.params.id;
 
-    if (!candId || isNaN(candId)) {
+    if (!rawId) {
       return res.status(400).json({ success: false, message: "Invalid candidate ID" });
     }
 
@@ -562,29 +562,41 @@ router.patch("/on-hold/:id", async (req, res) => {
 
     /* ── CHECK CANDIDATE EXISTS ── */
     const [existing] = await pool.query(
-      "SELECT cand_id, is_onhold FROM candidate WHERE cand_id = ? AND is_delete = 0",
-      [candId]
+      "SELECT cand_id, candidate_id, is_onhold FROM candidate WHERE (cand_id = ? OR candidate_id = ?) AND is_delete = 0",
+      [rawId, rawId]
     );
 
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: "Candidate not found" });
     }
 
-    if (Number(existing[0].is_onhold) === 1) {
+    const candidate = existing[0];
+    const actualCandId = candidate.cand_id;
+    const actualCandidateCode = candidate.candidate_id;
+
+    if (Number(candidate.is_onhold) === 1) {
       return res.status(400).json({ success: false, message: "Candidate is already on hold" });
     }
 
-    /* ── UPDATE STATUS ── */
+    /* ── UPDATE CANDIDATE STATUS ── */
     await pool.query(
       `UPDATE candidate
        SET is_onhold = 1, is_reject = 0, onhold_comment = ?, verification_status = 5, updated_at = NOW()
        WHERE cand_id = ?`,
-      [reason.trim(), candId]
+      [reason.trim(), actualCandId]
+    );
+
+    /* ── PUT RELATIVE CASES ON HOLD (status 6 = Hold) ── */
+    await pool.query(
+      `UPDATE case_master
+       SET verification_status = 6, verification_comment = ?, updated_at = NOW()
+       WHERE cand_id = ? OR candidate_id = ?`,
+      [reason.trim(), actualCandId, actualCandidateCode]
     );
 
     return res.status(200).json({
       success: true,
-      message: "Candidate placed on hold successfully",
+      message: "Candidate and relative cases placed on hold successfully",
     });
 
   } catch (error) {
@@ -616,23 +628,27 @@ router.patch("/on-hold/:id", async (req, res) => {
  */
 router.patch("/remove-hold/:id", async (req, res) => {
   try {
-    const candId = parseInt(req.params.id);
+    const rawId = req.params.id;
 
-    if (!candId || isNaN(candId)) {
+    if (!rawId) {
       return res.status(400).json({ success: false, message: "Invalid candidate ID" });
     }
 
     /* ── CHECK CANDIDATE EXISTS ── */
     const [existing] = await pool.query(
-      "SELECT cand_id, is_onhold FROM candidate WHERE cand_id = ? AND is_delete = 0",
-      [candId]
+      "SELECT cand_id, candidate_id, is_onhold FROM candidate WHERE (cand_id = ? OR candidate_id = ?) AND is_delete = 0",
+      [rawId, rawId]
     );
 
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: "Candidate not found" });
     }
 
-    if (Number(existing[0].is_onhold) === 0) {
+    const candidate = existing[0];
+    const actualCandId = candidate.cand_id;
+    const actualCandidateCode = candidate.candidate_id;
+
+    if (Number(candidate.is_onhold) === 0) {
       return res.status(400).json({ success: false, message: "Candidate is not on hold" });
     }
 
@@ -641,7 +657,15 @@ router.patch("/remove-hold/:id", async (req, res) => {
       `UPDATE candidate
        SET is_onhold = 0, onhold_comment = NULL, verification_status = 2, updated_at = NOW()
        WHERE cand_id = ?`,
-      [candId]
+      [actualCandId]
+    );
+
+    /* ── RESTORE RELATIVE CASES (back to Assigned/2 or Pending/1) ── */
+    await pool.query(
+      `UPDATE case_master
+       SET verification_status = CASE WHEN vendor_id IS NOT NULL THEN 2 ELSE 1 END, verification_comment = NULL, updated_at = NOW()
+       WHERE (cand_id = ? OR candidate_id = ?) AND verification_status = 6`,
+      [actualCandId, actualCandidateCode]
     );
 
     return res.status(200).json({
@@ -855,9 +879,9 @@ router.patch("/bulk-assign-hr", async (req, res) => {
  */
 router.patch("/reject/:id", async (req, res) => {
   try {
-    const candId = parseInt(req.params.id);
+    const rawId = req.params.id;
 
-    if (!candId || isNaN(candId)) {
+    if (!rawId) {
       return res.status(400).json({ success: false, message: "Invalid candidate ID" });
     }
 
@@ -872,29 +896,41 @@ router.patch("/reject/:id", async (req, res) => {
 
     /* ── CHECK CANDIDATE EXISTS ── */
     const [existing] = await pool.query(
-      "SELECT cand_id, is_reject FROM candidate WHERE cand_id = ? AND is_delete = 0",
-      [candId]
+      "SELECT cand_id, candidate_id, is_reject FROM candidate WHERE (cand_id = ? OR candidate_id = ?) AND is_delete = 0",
+      [rawId, rawId]
     );
 
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: "Candidate not found" });
     }
 
-    if (Number(existing[0].is_reject) === 1) {
+    const candidate = existing[0];
+    const actualCandId = candidate.cand_id;
+    const actualCandidateCode = candidate.candidate_id;
+
+    if (Number(candidate.is_reject) === 1) {
       return res.status(400).json({ success: false, message: "Candidate is already rejected" });
     }
 
-    /* ── UPDATE STATUS ── */
+    /* ── UPDATE CANDIDATE STATUS ── */
     await pool.query(
       `UPDATE candidate
        SET is_reject = 1, is_onhold = 0, reject_comment = ?, verification_status = 3, updated_at = NOW()
        WHERE cand_id = ?`,
-      [reason.trim(), candId]
+      [reason.trim(), actualCandId]
+    );
+
+    /* ── REJECT RELATIVE CASES (status 5 = Refute / Rejected) ── */
+    await pool.query(
+      `UPDATE case_master
+       SET verification_status = 5, verification_comment = ?, updated_at = NOW()
+       WHERE cand_id = ? OR candidate_id = ?`,
+      [reason.trim(), actualCandId, actualCandidateCode]
     );
 
     return res.status(200).json({
       success: true,
-      message: "Candidate rejected successfully",
+      message: "Candidate and relative cases rejected successfully",
     });
 
   } catch (error) {
@@ -1230,8 +1266,8 @@ router.post("/send-welcome-email/:candId", async (req, res) => {
   const { candId } = req.params;
   try {
     const [candidates] = await pool.query(
-      "SELECT candidate_first_name, candidate_last_name, candidate_email FROM candidate WHERE cand_id = ? AND is_delete = 0",
-      [candId]
+      "SELECT cand_id, candidate_id, candidate_first_name, candidate_last_name, candidate_email FROM candidate WHERE (cand_id = ? OR candidate_id = ?) AND is_delete = 0",
+      [candId, candId]
     );
 
     if (candidates.length === 0) {

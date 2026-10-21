@@ -17,6 +17,7 @@ import auditRoutes from "./routes/superadminroute/auditRoutes.js";
 import dashboardRoutes from "./routes/superadminroute/dashboardRoutes.js";
 import superAdminBillingRoutes from "./routes/superadminroute/billingRoutes.js";
 import superAdminCaseRoutes from "./routes/superadminroute/caseRoutes.js";
+import superAdminAnalyticsRoutes from "./routes/superadminroute/analyticsRoutes.js";
 
 // ───────── CLIENT ADMIN ─────────
 import clientAdminHrRoutes from "./routes/clientadminroute/hrRoutes.js";
@@ -24,6 +25,7 @@ import clientAdminCandidateRoutes from "./routes/clientadminroute/candidateRoute
 import clientAdminAuthRoutes from "./routes/clientadminroute/authRoutes.js";
 import clientAdminDashboardRoutes from "./routes/clientadminroute/dashboardRoutes.js";
 import clientAdminBillingRoutes from "./routes/clientadminroute/billingRoutes.js";
+import clientAdminAnalyticsRoutes from "./routes/clientadminroute/analyticsRoutes.js";
 
 // ───────── HR ─────────
 import hrAuthRoutes from "./routes/hrroute/authRoutes.js";
@@ -96,6 +98,7 @@ app.use("/api/audit", auditRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/billing", superAdminBillingRoutes);
 app.use("/api/superadmin/cases", superAdminCaseRoutes);
+app.use("/api/superadmin/analytics", superAdminAnalyticsRoutes);
 
 /* ───────── CLIENT ADMIN ROUTES ───────── */
 
@@ -110,6 +113,7 @@ app.use(
 );
 app.use("/api/client-admin/dashboard", clientAdminDashboardRoutes);
 app.use("/api/client-admin/billing", clientAdminBillingRoutes);
+app.use("/api/client-admin/analytics", clientAdminAnalyticsRoutes);
 
 /* ───────── VENDOR ROUTES ───────── */
 app.use("/api/vendor/auth", vendorAuthRoutes);

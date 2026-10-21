@@ -38,7 +38,7 @@ router.get("/", async (req, res) => {
     
     const search = req.query.search || "";
     const moduleFilter = req.query.module || "All Modules";
-    const dateFilter = req.query.dateFilter || "Today";
+    const dateFilter = req.query.dateFilter || "All Time";
 
     let baseQuery = `
       FROM audit_logs a
@@ -49,7 +49,7 @@ router.get("/", async (req, res) => {
     const queryParams = [];
 
     if (search) {
-      baseQuery += ` AND (u.firstname LIKE ? OR u.lastname LIKE ? OR a.remarks LIKE ? OR a.ip LIKE ?)`;
+      baseQuery += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR a.remarks LIKE ? OR a.ip LIKE ?)`;
       const searchParam = `%${search}%`;
       queryParams.push(searchParam, searchParam, searchParam, searchParam);
     }
@@ -59,7 +59,7 @@ router.get("/", async (req, res) => {
       queryParams.push(moduleFilter);
     }
 
-    if (dateFilter) {
+    if (dateFilter && dateFilter !== "All Time") {
       if (dateFilter === "Today") {
         baseQuery += ` AND DATE(a.created_at) = CURDATE()`;
       } else if (dateFilter === "Yesterday") {
@@ -79,8 +79,10 @@ router.get("/", async (req, res) => {
     const dataQuery = `
       SELECT 
         a.audit_id,
-        u.firstname,
-        u.lastname,
+        u.first_name,
+        u.last_name,
+        u.first_name AS firstname,
+        u.last_name AS lastname,
         u.role_name,
         a.action,
         a.module_type,

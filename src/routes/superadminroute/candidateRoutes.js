@@ -574,6 +574,14 @@ router.patch("/on-hold/:id", async (req, res) => {
       [reason.trim(), candId]
     );
 
+    /* ── PUT RELATIVE CASES ON HOLD ── */
+    await pool.query(
+      `UPDATE case_master
+       SET verification_status = 6, updated_at = NOW()
+       WHERE cand_id = ?`,
+      [candId]
+    );
+
     return res.status(200).json({
       success: true,
       message: "Candidate placed on hold successfully",
@@ -633,6 +641,14 @@ router.patch("/remove-hold/:id", async (req, res) => {
       `UPDATE candidate
        SET is_onhold = 0, onhold_comment = NULL, verification_status = 2, updated_at = NOW()
        WHERE cand_id = ?`,
+      [candId]
+    );
+
+    /* ── RESTORE RELATIVE CASES (Cases that were on hold back to Assigned or Pending) ── */
+    await pool.query(
+      `UPDATE case_master
+       SET verification_status = CASE WHEN vendor_id IS NOT NULL THEN 2 ELSE 1 END, updated_at = NOW()
+       WHERE cand_id = ? AND verification_status = 6`,
       [candId]
     );
 
@@ -880,6 +896,14 @@ router.patch("/reject/:id", async (req, res) => {
     await pool.query(
       `UPDATE candidate
        SET is_reject = 1, is_onhold = 0, reject_comment = ?, verification_status = 3, updated_at = NOW()
+       WHERE cand_id = ?`,
+      [reason.trim(), candId]
+    );
+
+    /* ── REJECT RELATIVE CASES ── */
+    await pool.query(
+      `UPDATE case_master
+       SET verification_status = 5, verification_comment = ?, updated_at = NOW()
        WHERE cand_id = ?`,
       [reason.trim(), candId]
     );

@@ -1,9 +1,15 @@
+import dotenv from "dotenv";
+dotenv.config();
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const getResendClient = () => {
+  const apiKey = process.env.RESEND_API_KEY;
+  return new Resend(apiKey);
+};
 
 export const sendEmail = async ({ to, subject, text, html }) => {
   try {
+    const resend = getResendClient();
     const { data, error } = await resend.emails.send({
       from: "BGV Platform <noreply@dqnex.com>",
       to,

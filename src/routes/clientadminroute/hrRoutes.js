@@ -1,6 +1,8 @@
 import express from "express";
 import pool from "../../config/db.js";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import { sendEmail } from "../../utils/sendEmail.js";
 import validateCreateHR from "../../middleware/clientadmin/validateCreateHR.js";
 
 const router = express.Router();
@@ -9,6 +11,63 @@ import { verifyToken } from "../../middleware/authMiddleware.js";
 
 router.use(apiLogger({ sourceService: "Client Admin Portal", destinationService: "Backend API" }));
 router.use(verifyToken);
+
+const sendHRWelcomeEmailHelper = async (hr) => {
+  const hrId = hr.id || hr.users_id;
+  const setupToken = crypto.randomBytes(32).toString("hex");
+  const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+  await pool.query(
+    "UPDATE users SET password_reset_token = ?, password_reset_expiry = ? WHERE users_id = ?",
+    [setupToken, tokenExpiry, hrId]
+  );
+
+  const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const portalUrl = `${baseUrl}/hr-setup-password?token=${setupToken}`;
+  const hrName = `${hr.firstName || hr.first_name || ""} ${hr.lastName || hr.last_name || ""}`.trim() || "HR Officer";
+  const hrEmail = (hr.email || "").trim().toLowerCase();
+  const empId = hr.empId || hr.employee_id || "HR Officer";
+  const roleName = hr.role || hr.role_name || "HR";
+
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="color: #01026E; margin: 0; font-size: 24px;">Welcome to BGV Platform</h2>
+        <p style="color: #64748b; font-size: 14px; margin-top: 6px;">Human Resources Portal Access</p>
+      </div>
+      <p style="font-size: 15px;">Dear <b>${hrName}</b>,</p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+        Your HR account has been created on the BGV Verification Platform. You have been assigned the role of <b>${roleName}</b> (Employee ID: <b>${empId}</b>).
+      </p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+        Please click the button below to securely set your password and access the HR Portal:
+      </p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${portalUrl}" style="background-color: #01026E; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block;">
+          Set Up My Password
+        </a>
+      </div>
+      <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
+        Or copy and paste this link in your browser:<br/>
+        <a href="${portalUrl}" style="color: #4338CA; word-break: break-all;">${portalUrl}</a>
+      </p>
+      <p style="font-size: 12px; color: #94a3b8; margin-top: 15px;">
+        <i>Note: This setup link is valid for 48 hours.</i>
+      </p>
+      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+      <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">
+        &copy; ${new Date().getFullYear()} BGV Platform. All rights reserved.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: hrEmail,
+    subject: "Welcome to BGV Platform - Set Up Your HR Account Password",
+    text: `Dear ${hrName},\n\nWelcome to BGV Platform!\n\nYour HR account (${empId}) has been created with role ${roleName}. Please set up your password at:\n${portalUrl}\n\nThis link is valid for 48 hours.\n\nBest regards,\nBGV Platform Team`,
+    html: emailHtml,
+  });
+};
 
 // ── CREATE HR ────────────────────────────────────────────────
 router.post("/create", validateCreateHR, async (req, res) => {
@@ -87,6 +146,16 @@ router.post("/create", validateCreateHR, async (req, res) => {
         createdBy, // created_by = logged in user
       ]
     );
+
+    // Send welcome & setup password email to HR
+    sendHRWelcomeEmailHelper({
+      id: result.insertId,
+      empId,
+      firstName,
+      lastName,
+      email,
+      role,
+    }).catch(err => console.error("Error sending welcome email to HR on create:", err));
 
     return res.status(201).json({
       success: true,
@@ -332,6 +401,46 @@ router.get("/overview", async (req, res) => {
     });
   } catch (error) {
     console.error("overview error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+});
+
+// ── SEND / RESEND EMAIL TO HR ──────────────────────────────────
+router.post("/send-email/:id", async (req, res) => {
+  try {
+    const hrId = parseInt(req.params.id);
+    const clientId = req.user.client_id;
+    if (!hrId || isNaN(hrId)) {
+      return res.status(400).json({ success: false, message: "Invalid HR ID" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT users_id AS id, employee_id AS empId, first_name AS firstName, last_name AS lastName, email, mobile AS phone, role_name AS role, is_active AS isActive
+       FROM users
+       WHERE users_id = ? AND client_id = ? AND is_delete = 0`,
+      [hrId, clientId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "HR not found" });
+    }
+
+    const hr = rows[0];
+    const emailSuccess = await sendHRWelcomeEmailHelper(hr);
+
+    if (!emailSuccess) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send email. Please check your mail service configuration.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Setup email sent successfully to ${hr.email}`,
+    });
+  } catch (error) {
+    console.error("send-client-hr-email error:", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });

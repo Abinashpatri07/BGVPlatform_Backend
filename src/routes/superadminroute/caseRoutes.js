@@ -248,6 +248,8 @@ router.get("/details/:caseId", async (req, res) => {
         caseId: "CASE-" + caseData.case_id.toString().padStart(5, '0'),
         caseType: caseData.case_type,
         verificationStatus: caseData.verification_status,
+        verificationComment: caseData.verification_comment,
+        completedDate: caseData.completed_date,
         vendorId: caseData.vendor_id,
         vendorName: caseData.vendor_name,
         assignedDate: caseData.assigned_date,

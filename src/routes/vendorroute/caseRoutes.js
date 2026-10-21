@@ -8,6 +8,19 @@ const upload = multer({ storage: getUploadStorage() });
 
 const router = express.Router();
 
+// Module-level helper so all route handlers can use it
+const getStatusName = (status) => {
+  switch (parseInt(status)) {
+    case 1: return "Pending";
+    case 2: return "Assigned";
+    case 3: return "In Progress";
+    case 4: return "Verified";
+    case 5: return "Refute";
+    case 6: return "Hold";
+    default: return "Unverified";
+  }
+};
+
 /**
  * @swagger
  * /api/vendor/cases/assigned:
@@ -132,7 +145,7 @@ router.get("/education/:caseId", verifyToken, async (req, res) => {
 
     // Verify this case belongs to vendor
     const [cm] = await pool.query(
-      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      "SELECT cand_id, verification_status FROM case_master WHERE case_id = ? AND vendor_id = ?",
       [caseId, vendorId]
     );
     if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
@@ -156,6 +169,7 @@ router.get("/education/:caseId", verifyToken, async (req, res) => {
 
     res.status(200).json({
       success: true,
+      caseStatus: getStatusName(cm[0].verification_status),
       candidate: candidate[0] || {},
       education: eduRows
     });
@@ -175,7 +189,7 @@ router.get("/employment/:caseId", verifyToken, async (req, res) => {
     const { caseId } = req.params;
 
     const [cm] = await pool.query(
-      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      "SELECT cand_id, verification_status FROM case_master WHERE case_id = ? AND vendor_id = ?",
       [caseId, vendorId]
     );
     if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
@@ -199,6 +213,7 @@ router.get("/employment/:caseId", verifyToken, async (req, res) => {
 
     res.status(200).json({
       success: true,
+      caseStatus: getStatusName(cm[0].verification_status),
       candidate: candidate[0] || {},
       employment: empRows
     });
@@ -218,7 +233,7 @@ router.get("/drug/:caseId", verifyToken, async (req, res) => {
     const { caseId } = req.params;
 
     const [cm] = await pool.query(
-      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      "SELECT cand_id, verification_status FROM case_master WHERE case_id = ? AND vendor_id = ?",
       [caseId, vendorId]
     );
     if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
@@ -242,6 +257,7 @@ router.get("/drug/:caseId", verifyToken, async (req, res) => {
 
     res.status(200).json({
       success: true,
+      caseStatus: getStatusName(cm[0].verification_status),
       candidate: candidate[0] || {},
       drug: drugRows[0] || null
     });
@@ -261,7 +277,7 @@ router.get("/criminal/:caseId", verifyToken, async (req, res) => {
     const { caseId } = req.params;
 
     const [cm] = await pool.query(
-      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      "SELECT cand_id, verification_status FROM case_master WHERE case_id = ? AND vendor_id = ?",
       [caseId, vendorId]
     );
     if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
@@ -285,6 +301,7 @@ router.get("/criminal/:caseId", verifyToken, async (req, res) => {
 
     res.status(200).json({
       success: true,
+      caseStatus: getStatusName(cm[0].verification_status),
       candidate: candidate[0] || {},
       criminal: crimRows[0] || null,
       records: crimRows
@@ -305,7 +322,7 @@ router.get("/reference/:caseId", verifyToken, async (req, res) => {
     const { caseId } = req.params;
 
     const [cm] = await pool.query(
-      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      "SELECT cand_id, verification_status FROM case_master WHERE case_id = ? AND vendor_id = ?",
       [caseId, vendorId]
     );
     if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
@@ -329,6 +346,7 @@ router.get("/reference/:caseId", verifyToken, async (req, res) => {
 
     res.status(200).json({
       success: true,
+      caseStatus: getStatusName(cm[0].verification_status),
       candidate: candidate[0] || {},
       records: refRows
     });
@@ -348,7 +366,7 @@ router.get("/identity/:caseId", verifyToken, async (req, res) => {
     const { caseId } = req.params;
 
     const [cm] = await pool.query(
-      "SELECT cand_id FROM case_master WHERE case_id = ? AND vendor_id = ?",
+      "SELECT cand_id, verification_status FROM case_master WHERE case_id = ? AND vendor_id = ?",
       [caseId, vendorId]
     );
     if (cm.length === 0) return res.status(404).json({ success: false, message: "Case not found" });
@@ -359,12 +377,20 @@ router.get("/identity/:caseId", verifyToken, async (req, res) => {
     );
 
     let [identRows] = await pool.query(
-      "SELECT * FROM candidate_identity WHERE case_id = ? OR (case_id IS NULL AND cand_id = ?) ORDER BY cand_iden_id",
-      [caseId, cm[0].cand_id]
+      "SELECT * FROM candidate_identity WHERE case_id = ? ORDER BY cand_iden_id",
+      [caseId]
     );
+    if (identRows.length === 0) {
+      const [identFallback] = await pool.query(
+        "SELECT * FROM candidate_identity WHERE cand_id = ? ORDER BY cand_iden_id",
+        [cm[0].cand_id]
+      );
+      identRows = identFallback;
+    }
 
     res.status(200).json({
       success: true,
+      caseStatus: getStatusName(cm[0].verification_status),
       candidate: candidate[0] || {},
       records: identRows
     });

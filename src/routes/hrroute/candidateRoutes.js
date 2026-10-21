@@ -508,7 +508,7 @@ router.get(
            verification_status      AS case_status,
            created_at,
            updated_at
-         FROM candidate_master
+         FROM candidate
          WHERE cand_id = ? AND is_delete = 0`,
         [id]
       );
@@ -798,15 +798,17 @@ router.patch(
  *       500:
  *         description: Internal Server Error
  */
+// GET /:id/personal
 router.get("/:id/personal", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query(
-      `SELECT cand_id, candidate_id AS case_id, candidate_first_name AS first_name, candidate_last_name AS last_name, candidate_email AS email, candidate_mobile AS phone,
-              date_of_birth, gender, father_name, nationality,
-              candidate_function AS job_function, candidate_tag AS tag, verification_status AS case_status, created_at, updated_at
-       FROM candidate
-       WHERE cand_id = ? AND is_delete = 0`,
+      `SELECT c.cand_id, c.candidate_id AS case_id, c.candidate_first_name AS first_name, c.candidate_last_name AS last_name,
+              c.candidate_email AS email, c.candidate_mobile AS phone,
+              c.candidate_function AS job_function, c.candidate_tag AS tag,
+              c.verification_status AS case_status, c.created_at, c.updated_at
+       FROM candidate c
+       WHERE c.cand_id = ? AND c.is_delete = 0`,
       [id]
     );
     if (rows.length === 0)
@@ -818,64 +820,17 @@ router.get("/:id/personal", async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/personal:
- *   put:
- *     summary: Update Candidate Personal Info
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               first_name:
- *                 type: string
- *               last_name:
- *                 type: string
- *               email:
- *                 type: string
- *               phone:
- *                 type: string
- *               date_of_birth:
- *                 type: string
- *                 format: date
- *               gender:
- *                 type: string
- *               father_name:
- *                 type: string
- *               nationality:
- *                 type: string
- *               job_function:
- *                 type: string
- *               tag:
- *                 type: string
- *     responses:
- *       200:
- *         description: Personal info updated
- *       500:
- *         description: Internal Server Error
- */
+// PUT /:id/personal
 router.put("/:id/personal", async (req, res) => {
   try {
     const { id } = req.params;
-    const { first_name, last_name, email, phone, date_of_birth, gender, father_name, nationality, job_function, tag } = req.body;
+    const { first_name, last_name, email, phone, job_function, tag } = req.body;
     await pool.query(
-      `UPDATE candidate_master
-       SET first_name=?, last_name=?, email=?, phone=?,
-           date_of_birth=?, gender=?, father_name=?, nationality=?,
-           job_function=?, tag=?, updated_at=NOW()
-       WHERE cand_id=? AND is_delete=0`,
-      [first_name, last_name, email, phone, date_of_birth || null, gender || null, father_name, nationality, job_function, tag, id]
+      `UPDATE candidate
+       SET candidate_first_name = ?, candidate_last_name = ?, candidate_email = ?, candidate_mobile = ?,
+           candidate_function = ?, candidate_tag = ?, updated_at = NOW()
+       WHERE cand_id = ? AND is_delete = 0`,
+      [first_name, last_name, email, phone, job_function, tag, id]
     );
     return res.status(200).json({ success: true, message: "Personal info updated" });
   } catch (err) {
@@ -884,130 +839,80 @@ router.put("/:id/personal", async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/address:
- *   get:
- *     summary: Get Candidate Address
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     responses:
- *       200:
- *         description: Address data
- *       500:
- *         description: Internal Server Error
- */
+// GET /:id/address
 router.get("/:id/address", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query(
-      `SELECT * FROM candidate_address WHERE cand_id = ? AND is_delete = 0`,
+      `SELECT * FROM candidate_address WHERE cand_id = ?`,
       [id]
     );
-    return res.status(200).json({ success: true, data: rows[0] || null });
+    if (rows.length === 0) {
+      return res.status(200).json({ success: true, data: null });
+    }
+    const row = rows[0];
+    const data = {
+      permanent_address: row.cand_perm_house ? `${row.cand_perm_house} ${row.cand_perm_street || ""}`.trim() : (row.cand_perm_street || ""),
+      permanent_city: row.cand_perm_city,
+      permanent_area: row.cand_perm_locality || row.cand_perm_street || "",
+      permanent_state: row.cand_perm_state,
+      permanent_country: row.cand_perm_country || "India",
+      permanent_zipcode: row.cand_perm_pincode,
+      current_address_same_as_permanent: row.is_add_same || 1,
+      candidate_current_address: row.cand_curr_house ? `${row.cand_curr_house} ${row.cand_curr_street || ""}`.trim() : (row.cand_curr_street || ""),
+      current_city: row.cand_curr_city,
+      current_area: row.cand_curr_locality || row.cand_curr_street || "",
+      current_state: row.cand_curr_state,
+      current_country: row.cand_curr_country || "India",
+      current_zipcode: row.cand_curr_pincode,
+      ...row
+    };
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/address:
- *   put:
- *     summary: Save/Update Candidate Address (Upsert)
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               permanent_address:
- *                 type: string
- *               permanent_city:
- *                 type: string
- *               permanent_area:
- *                 type: string
- *               permanent_state:
- *                 type: string
- *               permanent_country:
- *                 type: string
- *               permanent_zipcode:
- *                 type: string
- *               current_address_same_as_permanent:
- *                 type: integer
- *                 example: 1
- *               candidate_current_address:
- *                 type: string
- *               current_city:
- *                 type: string
- *               current_state:
- *                 type: string
- *               current_country:
- *                 type: string
- *               current_zipcode:
- *                 type: string
- *     responses:
- *       200:
- *         description: Address saved
- *       500:
- *         description: Internal Server Error
- */
+// PUT /:id/address
 router.put("/:id/address", async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      permanent_address, permanent_city, permanent_area, permanent_state,
-      permanent_country, permanent_zipcode,
+      permanent_address, permanent_city, permanent_state, permanent_country, permanent_zipcode,
       current_address_same_as_permanent,
-      candidate_current_address, current_city, current_area,
-      current_state, current_country, current_zipcode,
+      candidate_current_address, current_city, current_state, current_country, current_zipcode,
     } = req.body;
 
     const [existing] = await pool.query(
-      "SELECT addr_id FROM candidate_address WHERE cand_id = ?", [id]
+      "SELECT cand_add_id FROM candidate_address WHERE cand_id = ?", [id]
     );
 
     if (existing.length > 0) {
       await pool.query(
         `UPDATE candidate_address
-         SET permanent_address=?, permanent_city=?, permanent_area=?, permanent_state=?,
-             permanent_country=?, permanent_zipcode=?, current_address_same_as_permanent=?,
-             candidate_current_address=?, current_city=?, current_area=?,
-             current_state=?, current_country=?, current_zipcode=?, updated_at=NOW()
-         WHERE cand_id=?`,
-        [permanent_address, permanent_city, permanent_area, permanent_state,
-          permanent_country, permanent_zipcode, current_address_same_as_permanent || 2,
-          candidate_current_address, current_city, current_area,
-          current_state, current_country, current_zipcode, id]
+         SET cand_perm_street = ?, cand_perm_city = ?, cand_perm_state = ?,
+             cand_perm_country = ?, cand_perm_pincode = ?, is_add_same = ?,
+             cand_curr_street = ?, cand_curr_city = ?,
+             cand_curr_state = ?, cand_curr_country = ?, cand_curr_pincode = ?, updated_at = NOW()
+         WHERE cand_id = ?`,
+        [permanent_address, permanent_city, permanent_state,
+          permanent_country || 'India', permanent_zipcode, current_address_same_as_permanent || 1,
+          candidate_current_address, current_city,
+          current_state, current_country || 'India', current_zipcode, id]
       );
     } else {
       await pool.query(
         `INSERT INTO candidate_address
-         (cand_id, permanent_address, permanent_city, permanent_area, permanent_state,
-          permanent_country, permanent_zipcode, current_address_same_as_permanent,
-          candidate_current_address, current_city, current_area,
-          current_state, current_country, current_zipcode, is_delete)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
-        [id, permanent_address, permanent_city, permanent_area, permanent_state,
-          permanent_country, permanent_zipcode, current_address_same_as_permanent || 2,
-          candidate_current_address, current_city, current_area,
-          current_state, current_country, current_zipcode]
+         (cand_id, cand_perm_street, cand_perm_city, cand_perm_state,
+          cand_perm_country, cand_perm_pincode, is_add_same,
+          cand_curr_street, cand_curr_city,
+          cand_curr_state, cand_curr_country, cand_curr_pincode, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?, NOW(), NOW())`,
+        [id, permanent_address, permanent_city, permanent_state,
+          permanent_country || 'India', permanent_zipcode, current_address_same_as_permanent || 1,
+          candidate_current_address, current_city,
+          current_state, current_country || 'India', current_zipcode]
       );
     }
     return res.status(200).json({ success: true, message: "Address saved" });
@@ -1017,173 +922,125 @@ router.put("/:id/address", async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/identity:
- *   get:
- *     summary: Get Candidate Identity Documents
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     responses:
- *       200:
- *         description: List of identity documents (1=PAN, 2=Aadhaar, 3=Passport, 4=DrivingLicense, 5=VoterID)
- *       500:
- *         description: Internal Server Error
- */
+// GET /:id/identity
 router.get("/:id/identity", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query(
-      `SELECT id_doc_id, doc_type, doc_number, verification_status, upload_date
-       FROM candidate_id_document
-       WHERE cand_id = ? AND is_delete = 0
-       ORDER BY doc_type`,
+      `SELECT * FROM candidate_identity WHERE cand_id = ? ORDER BY cand_iden_id`,
       [id]
     );
-    return res.status(200).json({ success: true, data: rows });
+    const data = rows.map(r => ({
+      id_doc_id: r.cand_iden_id,
+      doc_type: r.cand_iden_type === "PAN card" ? 1 : r.cand_iden_type === "Aadhaar" ? 2 : r.cand_iden_type === "Passport" ? 3 : r.cand_iden_type === "Driving license" ? 4 : 5,
+      doc_number: r.pan_number || r.passport_number || r.driving_number || r.voter_number || r.uan_number || "—",
+      verification_status: r.iden_verification_status || 2,
+      doc_file_path: r.cand_iden_docu || null,
+      upload_date: r.created_at,
+      ...r
+    }));
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/education:
- *   get:
- *     summary: Get Candidate Education Records
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     responses:
- *       200:
- *         description: Education records
- *       500:
- *         description: Internal Server Error
- */
+// GET /:id/education
 router.get("/:id/education", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query(
-      `SELECT edu_id, institution_name, degree, field_of_study, board_university,
-              roll_number, start_year, end_year, percentage_cgpa,
-              doc_file_path, verification_status, upload_date
-       FROM candidate_education
-       WHERE cand_id = ? AND is_delete = 0
-       ORDER BY edu_id`,
+      `SELECT * FROM candidate_education WHERE cand_id = ? ORDER BY cand_edu_id`,
       [id]
     );
-    return res.status(200).json({ success: true, data: rows });
+    const data = rows.map(r => ({
+      edu_id: r.cand_edu_id,
+      institution_name: r.cand_edu_institute || "—",
+      degree: r.cand_edu_type || r.cand_edu_dgree || "—",
+      field_of_study: r.cand_specialization || "—",
+      board_university: r.cand_edu_institute || "—",
+      roll_number: "—",
+      start_year: r.cand_edu_from_date ? new Date(r.cand_edu_from_date).getFullYear() : "—",
+      end_year: r.cand_edu_to_date ? new Date(r.cand_edu_to_date).getFullYear() : "—",
+      percentage_cgpa: r.cand_edu_grade || "—",
+      doc_file_path: r.cand_edu_certificate || r.cand_edu_marksheet || null,
+      verification_status: r.edu_verification_status || 2,
+      upload_date: r.created_at,
+      ...r
+    }));
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/employment:
- *   get:
- *     summary: Get Candidate Employment Records
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     responses:
- *       200:
- *         description: Employment records
- *       500:
- *         description: Internal Server Error
- */
+// GET /:id/employment
 router.get("/:id/employment", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query(
-      `SELECT emp_id, employer_name, designation, department, employee_id,
-              start_date, end_date, is_current, annual_ctc,
-              reason_for_leaving, hr_name, hr_email, hr_phone,
-              doc_file_path, verification_status, upload_date
-       FROM candidate_employment
-       WHERE cand_id = ? AND is_delete = 0
-       ORDER BY start_date DESC`,
+      `SELECT * FROM candidate_employment WHERE cand_id = ? ORDER BY cand_emp_id DESC`,
       [id]
     );
-    return res.status(200).json({ success: true, data: rows });
+    const data = rows.map(r => ({
+      emp_id: r.cand_emp_id,
+      employer_name: r.cand_emp_company || "—",
+      designation: r.cand_emp_designation || "—",
+      department: "—",
+      employee_id: r.cand_emp_empid || "—",
+      start_date: r.cand_emp_from_date,
+      end_date: r.cand_emp_to_date,
+      is_current: r.cand_emp_to_date ? 0 : 1,
+      annual_ctc: "—",
+      reason_for_leaving: "—",
+      hr_name: "—",
+      hr_email: "—",
+      hr_phone: "—",
+      doc_file_path: r.cand_emp_joining || r.cand_emp_payslip || r.cand_emp_service || null,
+      verification_status: r.emp_verification_status || 2,
+      upload_date: r.created_at,
+      ...r
+    }));
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/background:
- *   get:
- *     summary: Get Candidate Background Check (Criminal + Drug)
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     responses:
- *       200:
- *         description: Criminal and drug test records
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     criminal:
- *                       type: array
- *                       items:
- *                         type: object
- *                     drug:
- *                       type: array
- *                       items:
- *                         type: object
- *       500:
- *         description: Internal Server Error
- */
+// GET /:id/background
 router.get("/:id/background", async (req, res) => {
   try {
     const { id } = req.params;
-    const [criminal] = await pool.query(
-      `SELECT criminal_id, case_details, court_name, case_number,
-              doc_file_path, verification_status, upload_date
-       FROM candidate_criminal_check
-       WHERE cand_id = ? AND is_delete = 0`,
+    const [criminalRows] = await pool.query(
+      `SELECT * FROM candidate_criminal WHERE cand_id = ?`,
       [id]
     );
-    const [drug] = await pool.query(
-      `SELECT drug_id, test_centre, test_date,
-              doc_file_path, verification_status, upload_date
-       FROM candidate_drug_test
-       WHERE cand_id = ? AND is_delete = 0`,
+    const [drugRows] = await pool.query(
+      `SELECT * FROM candidate_drug WHERE cand_id = ?`,
       [id]
     );
+    const criminal = criminalRows.map(c => ({
+      criminal_id: c.cand_crim_id,
+      case_details: c.cand_crim_remarks || (c.cand_crim_record === "Yes" ? "Criminal Record Exists" : "No Criminal Record"),
+      court_name: c.cand_crim_remarks || "—",
+      case_number: c.cand_crim_record === "Yes" ? (c.cand_crim_remarks || "Yes") : "None",
+      doc_file_path: c.cand_crim_report || null,
+      verification_status: c.crim_verification_status || 2,
+      upload_date: c.created_at,
+      ...c
+    }));
+    const drug = drugRows.map(d => ({
+      drug_id: d.cand_drug_id,
+      test_centre: d.cand_drug_test || "Standard Panel",
+      test_date: d.cand_drug_date,
+      doc_file_path: d.cand_drug_report || null,
+      verification_status: d.drug_verification_status || 2,
+      upload_date: d.created_at,
+      ...d
+    }));
     return res.status(200).json({ success: true, data: { criminal, drug } });
   } catch (err) {
     console.error(err);
@@ -1191,38 +1048,26 @@ router.get("/:id/background", async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/candidates/{id}/reference:
- *   get:
- *     summary: Get Candidate References
- *     tags: [HR - Candidate]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Candidate ID
- *     responses:
- *       200:
- *         description: Reference records
- *       500:
- *         description: Internal Server Error
- */
+// GET /:id/reference
 router.get("/:id/reference", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.query(
-      `SELECT ref_id, ref_person_name, ref_person_designation,
-              ref_person_company, ref_person_phone, ref_email_address,
-              known_time, verification_status
-       FROM candidate_reference
-       WHERE cand_id = ? AND is_delete = 0
-       ORDER BY ref_id`,
+      `SELECT * FROM candidate_reference WHERE cand_id = ? ORDER BY cand_ref_id`,
       [id]
     );
-    return res.status(200).json({ success: true, data: rows });
+    const data = rows.map(r => ({
+      ref_id: r.cand_ref_id,
+      ref_person_name: r.cand_ref_name || "—",
+      ref_person_designation: r.cand_ref_designation || "—",
+      ref_person_company: r.cand_ref_org || "—",
+      ref_person_phone: r.cand_ref_phone || "—",
+      ref_email_address: r.cand_ref_email || "—",
+      known_time: r.cand_ref_relation || "—",
+      verification_status: 1,
+      ...r
+    }));
+    return res.status(200).json({ success: true, data });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
