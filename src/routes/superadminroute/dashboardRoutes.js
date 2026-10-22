@@ -1,7 +1,9 @@
 import express from "express";
 import pool from "../../config/db.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
+router.use(verifyToken);
 
 /**
  * @swagger
@@ -68,9 +70,9 @@ router.get("/metrics", async (req, res) => {
         suspended: parseInt(vendorStats.suspended) || 0,
       },
       revenue: {
-        monthly: [600000, 98674, 660000, 720000, 680000, 820000, 740000, 490000, 580000, 650000, 610000, 790000],
-        quarterly: [1865674, 1990000, 2070000, 2230000],
-        yearly: [18000000, 19500000, 20900000],
+        monthly: Array(12).fill(0),
+        quarterly: Array(4).fill(0),
+        yearly: Array(3).fill(0),
       }
     };
 

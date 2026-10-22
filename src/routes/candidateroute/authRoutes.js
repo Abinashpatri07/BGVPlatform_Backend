@@ -66,7 +66,6 @@ router.post("/login", async (req, res) => {
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log(`\n\n=== [DEVELOPMENT] OTP for Candidate ${email} is: ${otp} ===\n\n`);
 
     // Send OTP email
     const emailSent = await sendEmail({

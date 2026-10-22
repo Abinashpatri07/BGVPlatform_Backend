@@ -4,11 +4,13 @@ import validateCreateHR from "../../middleware/superadmin/validateCreateHR.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { sendEmail } from "../../utils/sendEmail.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 import apiLogger from "../../middleware/apiLogger.js";
 
 router.use(apiLogger({ sourceService: "Super Admin Portal", destinationService: "Backend API" }));
+router.use(verifyToken);
 
 const sendHRWelcomeEmailHelper = async (hr) => {
   const hrId = hr.id || hr.users_id;

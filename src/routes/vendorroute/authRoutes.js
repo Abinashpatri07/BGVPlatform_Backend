@@ -101,16 +101,22 @@ router.post("/login", async (req, res) => {
 
     // Password matches! Reset login attempts and generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log(`\n\n=== [DEVELOPMENT] OTP for Vendor ${email} is: ${otp} ===\n\n`);
-    
-    // Send email asynchronously in background
-    sendEmail({
+
+    // Send OTP email
+    const emailSent = await sendEmail({
       to: email,
       subject: "Vendor Portal - 2FA Login OTP",
       text: `Your OTP for login is: ${otp}. It is valid for 5 minutes.`,
       html: `<h3>Vendor Portal Login</h3><p>Your OTP for login is: <b>${otp}</b>.</p><p>It is valid for 5 minutes.</p>`,
-    }).catch(err => console.warn("Background email error:", err));
-    
+    });
+
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP to your email address. Please try again.",
+      });
+    }
+
     await pool.query(
       "UPDATE vendor_master SET login_attempt_count = 0, locked_until = NULL, last_otp = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 5 MINUTE) WHERE vendor_id = ?",
       [otp, user.vendor_id]

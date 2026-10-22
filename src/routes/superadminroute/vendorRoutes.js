@@ -4,6 +4,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "../../utils/sendEmail.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 import validateCreateVendor from
 "../../middleware/superadmin/validateCreateVendor.js";
@@ -12,6 +13,7 @@ import validateUpdateVendor from
 "../../middleware/superadmin/validateUpdateVendor.js";
 
 const router = express.Router();
+router.use(verifyToken);
 
 const sendVendorWelcomeEmailHelper = (vendorName, pocName, pocEmail, setupToken = null) => {
   const companyName = "Dqnex";

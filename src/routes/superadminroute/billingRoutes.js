@@ -1,7 +1,9 @@
 import express from "express";
 import pool from "../../config/db.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
+router.use(verifyToken);
 
 // GET /api/billing/overview (Super Admin Overview Stats)
 router.get("/overview", async (req, res) => {

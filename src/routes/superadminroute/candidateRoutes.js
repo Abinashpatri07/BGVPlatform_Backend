@@ -4,6 +4,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "../../utils/sendEmail.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 import validateCreateCandidate from
 "../../middleware/superadmin/validateCreateCandidate.js";
@@ -15,6 +16,7 @@ const router = express.Router();
 import apiLogger from "../../middleware/apiLogger.js";
 
 router.use(apiLogger({ sourceService: "Super Admin Portal", destinationService: "Backend API" }));
+router.use(verifyToken);
 
 const sendCandidateWelcomeEmailHelper = (candidateName, candidateEmail, setupToken = null) => {
   const companyName = "Dqnex";

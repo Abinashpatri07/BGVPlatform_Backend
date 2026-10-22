@@ -3,8 +3,10 @@ import pool from "../../config/db.js";
 import { v4 as uuidv4 } from "uuid";
 import { sendEmail } from "../../utils/sendEmail.js";
 import validateCreateClient from "../../middleware/superadmin/validateCreateClient.js";
+import { verifyToken } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
+router.use(verifyToken);
 
 /**
  * @swagger
