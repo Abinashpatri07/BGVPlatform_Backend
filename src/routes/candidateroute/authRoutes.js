@@ -159,7 +159,7 @@ router.post("/verify-otp", async (req, res) => {
 
     // Generate JWT
     const token = jwt.sign(
-      { users_id: user.users_id, email: user.email, role: user.role_name },
+      { id: user.users_id, users_id: user.users_id, email: user.email, role: user.role_name },
       JWT_SECRET,
       { expiresIn: "24h" }
     );

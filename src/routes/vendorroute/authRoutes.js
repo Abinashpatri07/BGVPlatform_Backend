@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendEmail } from "../../utils/sendEmail.js";
 import { v4 as uuidv4 } from "uuid";
+import verifyToken from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -448,6 +449,50 @@ router.post("/forgot-password", async (req, res) => {
   } catch (error) {
     console.error("Vendor Forgot Password Error:", error);
     return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/vendor/auth/change-password:
+ *   post:
+ *     summary: Vendor Change Password
+ *     tags: [Vendor - Auth]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post("/change-password", verifyToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const vendorId = req.user.id;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: "Current and new password are required." });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, message: "New password must be at least 8 characters." });
+    }
+
+    const [vendors] = await pool.query(
+      "SELECT vendor_id, password_hash FROM vendor_master WHERE vendor_id = ? AND is_delete = 0",
+      [vendorId]
+    );
+    if (vendors.length === 0) {
+      return res.status(404).json({ success: false, message: "Vendor not found." });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, vendors[0].password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: "Current password is incorrect." });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await pool.query("UPDATE vendor_master SET password_hash = ? WHERE vendor_id = ?", [hashed, vendorId]);
+
+    return res.status(200).json({ success: true, message: "Password changed successfully." });
+  } catch (error) {
+    console.error("Vendor Change Password Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 

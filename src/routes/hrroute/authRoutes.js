@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendEmail } from "../../utils/sendEmail.js";
 import { v4 as uuidv4 } from "uuid";
+import verifyToken from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -408,6 +409,50 @@ router.post("/set-password", async (req, res) => {
   } catch (error) {
     console.error("HR Set Password Error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/hr/auth/change-password:
+ *   post:
+ *     summary: HR Change Password
+ *     tags: [HR - Auth]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post("/change-password", verifyToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: "Current and new password are required." });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, message: "New password must be at least 8 characters." });
+    }
+
+    const [users] = await pool.query(
+      "SELECT users_id, password FROM users WHERE users_id = ? AND is_delete = 0",
+      [userId]
+    );
+    if (users.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, users[0].password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: "Current password is incorrect." });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await pool.query("UPDATE users SET password = ? WHERE users_id = ?", [hashed, userId]);
+
+    return res.status(200).json({ success: true, message: "Password changed successfully." });
+  } catch (error) {
+    console.error("HR Change Password Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 
