@@ -128,7 +128,8 @@ router.post("/verify-otp", async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT u.*, c.candidate_experience, c.cand_id 
+      `SELECT u.*, c.candidate_experience, c.cand_id,
+              c.candidate_first_name, c.candidate_last_name, c.candidate_mobile
        FROM users u
        LEFT JOIN candidate c ON u.email = c.candidate_email
        WHERE u.email = ? AND u.is_delete = 0 AND u.is_active = 1`,
@@ -164,15 +165,20 @@ router.post("/verify-otp", async (req, res) => {
       { expiresIn: "24h" }
     );
 
+    const candName = (
+      `${user.candidate_first_name || user.first_name || ""} ${user.candidate_last_name || user.last_name || ""}`
+    ).trim() || user.username || "Candidate";
+
     return res.status(200).json({
       success: true,
       message: "Login successful.",
       token,
       user: {
         users_id: user.users_id,
-        name: `${user.first_name} ${user.last_name}`.trim(),
+        name: candName,
         email: user.email,
-        role: user.role_name,
+        phone: user.candidate_mobile || user.phone || "",
+        role: "Candidate",
         candidate_experience: user.candidate_experience || 1,
         cand_id: user.cand_id,
       },
