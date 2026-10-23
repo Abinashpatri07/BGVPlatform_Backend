@@ -359,11 +359,11 @@ router.post(
         [email.trim().toLowerCase()]
       );
 
-      // Always return success to prevent email enumeration
+      // Return error if user does not exist
       if (users.length === 0) {
-        return res.status(200).json({
-          success: true,
-          message: "If this email is registered, you will receive a password reset link shortly.",
+        return res.status(404).json({
+          success: false,
+          message: "No active Super Admin account found with this email.",
         });
       }
 
@@ -379,8 +379,13 @@ router.post(
         [resetTokenHash, user.users_id]
       );
 
-      // Build reset link
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      // Build reset link dynamically using the request origin (works for Vercel, custom domain, or localhost)
+      const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
+      const frontendUrl = (origin && origin !== "null")
+        ? origin.replace(/\/+$/, "")
+        : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
+            ? process.env.FRONTEND_URL.replace(/\/+$/, "")
+            : "https://bgv-platformdemo.vercel.app");
       const resetLink = `${frontendUrl}/super-admin/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
 
       // Send email
@@ -415,7 +420,7 @@ router.post(
 
       return res.status(200).json({
         success: true,
-        message: "If this email is registered, you will receive a password reset link shortly.",
+        message: "Password reset link has been sent to your registered email.",
       });
 
     } catch (error) {

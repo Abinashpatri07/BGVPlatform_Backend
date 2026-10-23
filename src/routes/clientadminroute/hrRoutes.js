@@ -22,7 +22,9 @@ const sendHRWelcomeEmailHelper = async (hr) => {
     [setupToken, tokenExpiry, hrId]
   );
 
-  const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const baseUrl = (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"))
+    ? process.env.FRONTEND_URL.replace(/\/+$/, "")
+    : "https://bgv-platformdemo.vercel.app";
   const portalUrl = `${baseUrl}/hr-setup-password?token=${setupToken}`;
   const hrName = `${hr.firstName || hr.first_name || ""} ${hr.lastName || hr.last_name || ""}`.trim() || "HR Officer";
   const hrEmail = (hr.email || "").trim().toLowerCase();

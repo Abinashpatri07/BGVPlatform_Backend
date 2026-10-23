@@ -261,7 +261,12 @@ router.post("/forgot-password", async (req, res) => {
       [resetToken, tokenExpiry, user.users_id]
     );
 
-    const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
+    const baseUrl = (origin && origin !== "null")
+      ? origin.replace(/\/+$/, "")
+      : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
+          ? process.env.FRONTEND_URL.replace(/\/+$/, "")
+          : "https://bgv-platformdemo.vercel.app");
     const setupUrl = `${baseUrl}/hr-setup-password?token=${resetToken}`;
     const hrName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "HR Executive";
 
