@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import validateLogin from "../../middleware/superadmin/validateLogin.js";
 import pool from "../../config/db.js";
 import bcrypt from "bcryptjs";
@@ -84,8 +85,20 @@ router.post("/login", validateLogin, async (req, res) => {
     const emailSent = await sendEmail({
       to: email,
       subject: "Super Admin Portal - 2FA Login OTP",
-      text: `Your OTP for login is: ${otp}. It is valid for 5 minutes.`,
-      html: `<h3>Super Admin Portal Login</h3><p>Your OTP for login is: <b>${otp}</b>.</p><p>It is valid for 5 minutes.</p>`,
+      text: `Your OTP for login is: ${otp}. It is valid for 10 minutes.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #4F46E5;">Super Admin Login - OTP Verification</h2>
+          <p>Your One-Time Password (OTP) for login is:</p>
+          <div style="background: #F3F4F6; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 36px; font-weight: bold; letter-spacing: 10px; color: #1F2937;">${otp}</span>
+          </div>
+          <p style="color: #6B7280; font-size: 14px;">⏱ This OTP is valid for <strong>10 minutes</strong>.</p>
+          <p style="color: #9CA3AF; font-size: 12px; margin-top: 20px;">If you did not attempt to log in, please ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;" />
+          <p style="color: #9CA3AF; font-size: 12px;">BGV Platform - Background Verification System</p>
+        </div>
+      `,
     });
 
     if (!emailSent) {
@@ -96,19 +109,96 @@ router.post("/login", validateLogin, async (req, res) => {
     }
 
     await pool.query(
-      "UPDATE users SET login_attempt_count = 0, locked_until = NULL, last_otp = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 5 MINUTE) WHERE users_id = ?",
+      "UPDATE users SET login_attempt_count = 0, locked_until = NULL, last_otp = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE users_id = ?",
       [otp, user.users_id]
     );
 
     res.status(200).json({
       success: true,
       requires2FA: true,
-      message: "OTP sent to your email address."
+      message: "OTP sent to your registered email address."
     });
 
   } catch (error) {
     console.error("Login Error:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/resend-otp:
+ *   post:
+ *     summary: Resend OTP to Super Admin
+ *     tags: [Super Admin - Auth]
+ */
+router.post("/resend-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required." });
+    }
+
+    const [users] = await pool.query(
+      "SELECT * FROM users WHERE email = ? AND role_name = 'Super Admin' AND is_active = 1 AND is_delete = 0",
+      [email.trim().toLowerCase()]
+    );
+
+    if (users.length === 0) {
+      return res.status(401).json({ success: false, message: "Invalid request." });
+    }
+
+    const user = users[0];
+
+    // 60-second cooldown: check if OTP was set within last 60 seconds
+    if (user.otp_expiry) {
+      const otpSetAt = new Date(user.otp_expiry).getTime() - 10 * 60 * 1000; // expiry - 10min = when it was set
+      const secondsSinceSent = (Date.now() - otpSetAt) / 1000;
+      if (secondsSinceSent < 60) {
+        const waitSec = Math.ceil(60 - secondsSinceSent);
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${waitSec} seconds before requesting a new OTP.`,
+        });
+      }
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const emailSent = await sendEmail({
+      to: user.email,
+      subject: "Super Admin Portal - New OTP",
+      text: `Your new OTP for login is: ${otp}. It is valid for 10 minutes.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #4F46E5;">Super Admin Login - New OTP</h2>
+          <p>Your new One-Time Password (OTP) for login is:</p>
+          <div style="background: #F3F4F6; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 36px; font-weight: bold; letter-spacing: 10px; color: #1F2937;">${otp}</span>
+          </div>
+          <p style="color: #6B7280; font-size: 14px;">⏱ This OTP is valid for <strong>10 minutes</strong>.</p>
+          <p style="color: #9CA3AF; font-size: 12px; margin-top: 20px;">If you did not attempt to log in, please ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;" />
+          <p style="color: #9CA3AF; font-size: 12px;">BGV Platform - Background Verification System</p>
+        </div>
+      `,
+    });
+
+    if (!emailSent) {
+      return res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
+    }
+
+    await pool.query(
+      "UPDATE users SET last_otp = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE users_id = ?",
+      [otp, user.users_id]
+    );
+
+    res.status(200).json({ success: true, message: "New OTP sent to your registered email address." });
+
+  } catch (error) {
+    console.error("Resend OTP Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 
@@ -262,14 +352,168 @@ router.post(
       });
     }
 
-    // SUCCESS
-    return res.status(200).json({
-      success: true,
-      message: "Password reset link sent successfully",
-    });
+    try {
+      // Check if user exists
+      const [users] = await pool.query(
+        "SELECT users_id, email, username FROM users WHERE email = ? AND role_name = 'Super Admin' AND is_active = 1 AND is_delete = 0",
+        [email.trim().toLowerCase()]
+      );
 
+      // Always return success to prevent email enumeration
+      if (users.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "If this email is registered, you will receive a password reset link shortly.",
+        });
+      }
+
+      const user = users[0];
+
+      // Generate secure reset token
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+      // Store hashed token with 1-hour expiry
+      await pool.query(
+        "UPDATE users SET password_reset_token = ?, password_reset_expiry = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE users_id = ?",
+        [resetTokenHash, user.users_id]
+      );
+
+      // Build reset link
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const resetLink = `${frontendUrl}/super-admin/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
+
+      // Send email
+      const emailSent = await sendEmail({
+        to: user.email,
+        subject: "BGV Platform - Password Reset Request",
+        text: `You requested a password reset. Click the link below to reset your password:\n\n${resetLink}\n\nThis link is valid for 1 hour. If you did not request this, please ignore this email.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4F46E5;">Password Reset Request</h2>
+            <p>Hello ${user.username || "Admin"},</p>
+            <p>You requested a password reset for your Super Admin account. Click the button below to set a new password:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}" 
+                 style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Reset Password
+              </a>
+            </div>
+            <p style="color: #6B7280; font-size: 14px;">This link is valid for <strong>1 hour</strong>. If you did not request this reset, please ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;" />
+            <p style="color: #9CA3AF; font-size: 12px;">BGV Platform - Background Verification System</p>
+          </div>
+        `,
+      });
+
+      if (!emailSent) {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send reset email. Please try again later.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "If this email is registered, you will receive a password reset link shortly.",
+      });
+
+    } catch (error) {
+      console.error("Forgot Password Error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
   }
 );
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset Super Admin Password using token
+ *     tags: [Super Admin - Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - email
+ *               - newPassword
+ *             properties:
+ *               token:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, email, newPassword } = req.body;
+
+    if (!token || !email || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Token, email and new password are required.",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters long.",
+      });
+    }
+
+    // Hash the token to compare with stored hash
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Find user with matching token that hasn't expired
+    const [users] = await pool.query(
+      "SELECT users_id, email FROM users WHERE email = ? AND password_reset_token = ? AND password_reset_expiry > NOW() AND role_name = 'Super Admin' AND is_active = 1 AND is_delete = 0",
+      [email.trim().toLowerCase(), tokenHash]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset link. Please request a new one.",
+      });
+    }
+
+    const user = users[0];
+
+    // Hash new password and update
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      "UPDATE users SET password = ?, password_reset_token = NULL, password_reset_expiry = NULL WHERE users_id = ?",
+      [hashedPassword, user.users_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Password has been reset successfully. You can now log in with your new password.",
+    });
+
+  } catch (error) {
+    console.error("Reset Password Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+});
+
 
 /**
  * @swagger
