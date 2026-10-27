@@ -22,12 +22,16 @@ if (isCloudinaryConfigured) {
   });
 }
 
-// 1. Cloudinary Storage
+// 1. Cloudinary Storage (configured but not used — VPS local preferred)
 const cloudinaryStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    const isPdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
-    const nameWithoutExt = path.parse(file.originalname).name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const isPdf =
+      file.mimetype === "application/pdf" ||
+      file.originalname.toLowerCase().endsWith(".pdf");
+    const nameWithoutExt = path
+      .parse(file.originalname)
+      .name.replace(/[^a-zA-Z0-9_-]/g, "_");
     return {
       folder: "bgv_uploads",
       resource_type: isPdf ? "raw" : "auto",
@@ -36,7 +40,7 @@ const cloudinaryStorage = new CloudinaryStorage({
   },
 });
 
-// 2. Local Disk Storage (Fallback if Cloudinary not set)
+// 2. Local Disk Storage — VPS pe save, /uploads se serve
 const localUploadsDir = path.resolve("uploads");
 if (!fs.existsSync(localUploadsDir)) {
   fs.mkdirSync(localUploadsDir, { recursive: true });
@@ -45,24 +49,37 @@ if (!fs.existsSync(localUploadsDir)) {
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `candidate_emp_${Date.now()}${ext}`);
+    const isPdf =
+      file.mimetype === "application/pdf" ||
+      file.originalname.toLowerCase().endsWith(".pdf");
+    // Always preserve correct extension so browsers can preview properly
+    const ext = path.extname(file.originalname) || (isPdf ? ".pdf" : "");
+    cb(null, `bgv_${Date.now()}${ext}`);
   },
 });
 
+/**
+ * ALWAYS use local VPS disk storage.
+ * Files are served via: http://<VPS_IP>:5000/uploads/<filename>
+ */
 export const getUploadStorage = () => {
-  return isCloudinaryConfigured ? cloudinaryStorage : diskStorage;
+  return diskStorage;
 };
 
+/**
+ * Returns the relative stored path (e.g. "uploads/bgv_xxx.pdf")
+ * for local files, or the full URL for externally hosted files.
+ */
 export const getUploadedFilePath = (fileOrPath) => {
   if (!fileOrPath) return null;
-  const rawPath = typeof fileOrPath === "string" ? fileOrPath : fileOrPath.path;
+  const rawPath =
+    typeof fileOrPath === "string" ? fileOrPath : fileOrPath.path;
   if (!rawPath) return null;
-  // If uploaded to Cloudinary or full URL
+  // Already a full URL (Cloudinary / external)
   if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
     return rawPath;
   }
-  // Standardize disk storage path with forward slash
+  // Normalize backslashes → forward slashes (Windows dev)
   const cleanPath = rawPath.replace(/\\/g, "/");
   return cleanPath.startsWith("/") ? cleanPath.slice(1) : cleanPath;
 };

@@ -53,7 +53,15 @@ const app = express();
 
 /* MIDDLEWARE */
 app.use(cors({
-  origin: ["http://localhost:5173", "http://localhost:5174", "https://bgv-platformdemo.vercel.app","https://bgv.dqnex.online"],
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://bgv-platformdemo.vercel.app",
+    "https://bgv.dqnex.online",
+    "http://187.126.122.110",
+    "http://187.126.122.110:5173",
+    "http://187.126.122.110:5174",
+  ],
   credentials: true,
 }));
 app.use(express.json());
@@ -62,7 +70,17 @@ const uploadsDirectory = path.resolve("uploads");
 if (!fs.existsSync(uploadsDirectory)) {
   fs.mkdirSync(uploadsDirectory, { recursive: true });
 }
-app.use("/uploads", express.static(uploadsDirectory));
+// Serve uploads — images & PDFs accessible at /uploads/<filename>
+app.use("/uploads", express.static(uploadsDirectory, {
+  setHeaders: (res, filePath) => {
+    // Allow browsers to display PDFs inline (not force download)
+    if (filePath.endsWith(".pdf")) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "inline");
+    }
+  },
+}));
+
 
 /* SWAGGER DOCS */
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
