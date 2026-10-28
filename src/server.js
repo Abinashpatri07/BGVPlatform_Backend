@@ -7,6 +7,9 @@ import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger.js";
 
 
+// ───────── UNIFIED AUTH ─────────
+import unifiedAuthRoutes from "./routes/unifiedAuthRoutes.js";
+
 // ───────── SUPER ADMIN ─────────
 import authRoutes from "./routes/superadminroute/authRoutes.js";
 import clientRoutes from "./routes/superadminroute/clientRoutes.js";
@@ -101,6 +104,14 @@ app.use("/api/hr/auth", hrAuthRoutes);
 app.use("/api/candidates", hrCandidateRoutes);
 app.use("/api/candidates/table", hrTableRoutes);
 
+/* ───────── UNIFIED AUTH ROUTES ───────── */
+app.use("/api/auth", unifiedAuthRoutes);
+
+/* ───────── VENDOR ROUTES (Must be before Super Admin /api/vendor) ───────── */
+app.use("/api/vendor/auth", vendorAuthRoutes);
+app.use("/api/vendor/cases", vendorCaseRoutes);
+app.use("/api/vendor/billing", vendorBillingRoutes);
+
 /* ───────── SUPER ADMIN ROUTES ───────── */
 
 app.use("/api/auth", authRoutes);
@@ -132,11 +143,6 @@ app.use(
 app.use("/api/client-admin/dashboard", clientAdminDashboardRoutes);
 app.use("/api/client-admin/billing", clientAdminBillingRoutes);
 app.use("/api/client-admin/analytics", clientAdminAnalyticsRoutes);
-
-/* ───────── VENDOR ROUTES ───────── */
-app.use("/api/vendor/auth", vendorAuthRoutes);
-app.use("/api/vendor/cases", vendorCaseRoutes);
-app.use("/api/vendor/billing", vendorBillingRoutes);
 
 
 
