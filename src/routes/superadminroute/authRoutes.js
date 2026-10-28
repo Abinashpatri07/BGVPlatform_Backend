@@ -269,6 +269,8 @@ router.post("/verify-otp", async (req, res) => {
         id: user.users_id,
         name: `${user.first_name} ${user.last_name}`.trim(),
         email: user.email,
+        phone: user.mobile || "",
+        mobile: user.mobile || "",
         role: user.role_name
       }
     });

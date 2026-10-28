@@ -188,7 +188,11 @@ router.get("/get-all", async (req, res) => {
         mobile     AS phone,
         role_name  AS role,
         is_active  AS isActive,
-        created_at AS createdAt
+        created_at AS createdAt,
+        CASE
+          WHEN password_reset_token IS NULL AND password IS NOT NULL AND password != ''
+          THEN 1 ELSE 0
+        END AS is_password_set
       FROM users
       WHERE is_delete = 0 AND client_id = ? AND role_name IN ('HR', 'HR 2', 'HR Executive', 'HR Manager', 'HR User')
       ORDER BY created_at DESC

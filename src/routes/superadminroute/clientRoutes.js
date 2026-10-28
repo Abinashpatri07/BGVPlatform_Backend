@@ -232,7 +232,16 @@ router.get("/get-all-clients", async (req, res) => {
         state,
         is_active,
         is_suspend,
-        created_at
+        created_at,
+        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END
+         FROM users u
+         WHERE u.client_id = client_master.client_id
+           AND u.role_name = 'Client Admin'
+           AND u.password_reset_token IS NULL
+           AND u.password IS NOT NULL
+           AND u.password != ''
+           AND u.is_delete = 0
+        ) AS is_password_set
       FROM client_master
       WHERE is_delete = 0
       ORDER BY created_at DESC

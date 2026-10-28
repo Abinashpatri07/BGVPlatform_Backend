@@ -280,7 +280,11 @@ router.get("/", async (req, res) => {
     const offset = (page - 1) * limit;
 
     const [rows] = await pool.query(
-      `SELECT vendor_id, company_name, poc_first_name, poc_last_name, poc_email, gst_number, is_active, is_suspend
+      `SELECT vendor_id, company_name, poc_first_name, poc_last_name, poc_email, gst_number, is_active, is_suspend,
+        CASE
+          WHEN password_reset_token IS NULL AND password_hash IS NOT NULL AND password_hash != ''
+          THEN 1 ELSE 0
+        END AS is_password_set
        FROM vendor_master
        WHERE is_delete = 0
        ORDER BY created_at DESC
