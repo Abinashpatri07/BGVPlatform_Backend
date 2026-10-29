@@ -268,7 +268,7 @@ router.post("/forgot-password", async (req, res) => {
       ? origin.replace(/\/+$/, "")
       : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
           ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-          : "https://bgv-platformdemo.vercel.app");
+          : "https://bgv.dqnex.online");
     const setupUrl = `${baseUrl}/hr-setup-password?token=${resetToken}`;
     const hrName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "HR Executive";
 

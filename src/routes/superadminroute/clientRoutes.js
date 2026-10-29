@@ -157,7 +157,7 @@ router.post(
       );
 
       /* ── SEND WELCOME EMAIL ── */
-      const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+      const baseUrl = process.env.FRONTEND_URL || "https://bgv.dqnex.online";
       const portalUrl = `${baseUrl}/client-setup-password?token=${setupToken}`;
 
       const emailHtml = `
@@ -708,7 +708,7 @@ router.post("/send-welcome-email/:clientId", async (req, res) => {
       return res.status(404).json({ success: false, message: "Client Admin user account not found for this client." });
     }
 
-    const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+    const baseUrl = process.env.FRONTEND_URL || "https://bgv.dqnex.online";
     const portalUrl = `${baseUrl}/client-setup-password?token=${setupToken}`;
 
     const emailHtml = `

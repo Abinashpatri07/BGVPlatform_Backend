@@ -59,7 +59,7 @@ app.use(cors({
   origin: [
     "http://localhost:5173",
     "http://localhost:5174",
-    "https://bgv-platformdemo.vercel.app",
+    "https://bgv.dqnex.online",
     "https://bgv.dqnex.online",
     "http://187.126.122.110",
     "http://187.126.122.110:5173",

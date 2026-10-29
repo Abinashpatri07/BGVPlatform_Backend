@@ -45,7 +45,7 @@ router.use((req, res, next) => {
 
 const sendCandidateWelcomeEmailHelper = (candidateName, candidateEmail, setupToken = null) => {
   const companyName = "Dqnex";
-  const baseUrl = process.env.FRONTEND_URL || "https://bgv-platformdemo.vercel.app";
+  const baseUrl = process.env.FRONTEND_URL || "https://bgv.dqnex.online";
   const portalUrl = setupToken ? `${baseUrl}/setup-password?token=${setupToken}` : `${baseUrl}/`;
   const supportEmail = "info@dqnex.com";
   const supportPhone = "+91-XXXXXXXXXX";

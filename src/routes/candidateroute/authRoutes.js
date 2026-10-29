@@ -225,7 +225,7 @@ router.post("/forgot-password", async (req, res) => {
       ? origin.replace(/\/+$/, "")
       : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
           ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-          : "https://bgv-platformdemo.vercel.app");
+          : "https://bgv.dqnex.online");
     const portalUrl = `${baseUrl}/setup-password?token=${resetToken}`;
 
     const emailHtml = `

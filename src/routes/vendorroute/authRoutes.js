@@ -424,7 +424,7 @@ router.post("/forgot-password", async (req, res) => {
       ? origin.replace(/\/+$/, "")
       : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
           ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-          : "https://bgv-platformdemo.vercel.app");
+          : "https://bgv.dqnex.online");
     const setupUrl = `${baseUrl}/vendor-setup-password?token=${resetToken}`;
     const pocName = `${vendor.poc_first_name || ""} ${vendor.poc_last_name || ""}`.trim() || "Vendor Partner";
 

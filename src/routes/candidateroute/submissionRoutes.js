@@ -15,19 +15,53 @@ const getVerificationStatus = (status) => {
   return 1; // Default to In Progress
 };
 
+const monthNames = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+};
+
 // Helper to format date strings to YYYY-MM-DD for MySQL
-const parseDate = (dateStr) => {
-  if (!dateStr || typeof dateStr !== "string") return null;
-  const cleaned = dateStr.trim();
+const parseDate = (dateVal) => {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+    return dateVal.toISOString().split("T")[0];
+  }
+  if (typeof dateVal !== "string") return null;
+  const cleaned = dateVal.trim();
+  if (!cleaned) return null;
+
+  // Already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return cleaned;
-  
-  const parts = cleaned.split(/[\/\-]/);
+
+  // ISO string with T
+  if (cleaned.includes("T")) {
+    const d = cleaned.split("T")[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  }
+
+  // Split by /, -, space, or dot
+  const parts = cleaned.split(/[\/\-\s\.]+/);
   if (parts.length === 3) {
-    if (parts[2].length === 4) { // DD/MM/YYYY
-      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-    } else if (parts[0].length === 4) { // YYYY/MM/DD
-      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    let [p0, p1, p2] = parts;
+
+    // Convert month name to 2-digit if needed (e.g. MAY, OCT)
+    if (isNaN(p1) && p1.length >= 3) {
+      const m = monthNames[p1.toLowerCase().substring(0, 3)];
+      if (m) p1 = m;
     }
+
+    if (/^\d{4}$/.test(p2) && /^\d{1,2}$/.test(p1) && /^\d{1,2}$/.test(p0)) {
+      // DD/MM/YYYY or DD-MMM-YYYY
+      return `${p2}-${p1.padStart(2, '0')}-${p0.padStart(2, '0')}`;
+    } else if (/^\d{4}$/.test(p0) && /^\d{1,2}$/.test(p1) && /^\d{1,2}$/.test(p2)) {
+      // YYYY/MM/DD
+      return `${p0}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
+    }
+  }
+
+  const parsed = new Date(dateVal);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split("T")[0];
   }
   return null;
 };
@@ -60,6 +94,20 @@ router.post("/id-documents", upload.any(), async (req, res) => {
 
     conn = await pool.getConnection();
     await conn.beginTransaction();
+
+    // Query candidate to get real candidate_id and client_id
+    const [candRows] = await conn.query(
+      "SELECT candidate_id, client_id FROM candidate WHERE cand_id = ?",
+      [cand_id]
+    );
+
+    let client_id = 1;
+    let candidateCode = `CAND-${cand_id}`;
+
+    if (candRows && candRows.length > 0) {
+      if (candRows[0].client_id) client_id = candRows[0].client_id;
+      if (candRows[0].candidate_id) candidateCode = candRows[0].candidate_id;
+    }
 
     // Clear old identity records for these ID types before inserting new ones (preserves Aadhaar Card)
     await conn.query(`DELETE FROM candidate_identity WHERE cand_id = ? AND cand_iden_type IN ('Passport', 'PAN card', 'Driving license', 'Voter ID')`, [cand_id]);
@@ -120,8 +168,8 @@ router.post("/id-documents", upload.any(), async (req, res) => {
       
       await conn.query(query, [
         cand_id,
-        "CAND-" + cand_id, 
-        1, 
+        candidateCode, 
+        client_id, 
         case_id,
         doc.doc_type,
         statusEnum,

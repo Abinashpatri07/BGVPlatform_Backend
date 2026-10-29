@@ -387,7 +387,7 @@ router.post(
         ? origin.replace(/\/+$/, "")
         : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
             ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-            : "https://bgv-platformdemo.vercel.app");
+            : "https://bgv.dqnex.online");
       const resetLink = `${frontendUrl}/super-admin/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
 
       // Send email

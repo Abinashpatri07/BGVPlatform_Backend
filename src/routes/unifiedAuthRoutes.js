@@ -404,7 +404,7 @@ router.post("/unified-forgot-password", async (req, res) => {
       ? origin.replace(/\/+$/, "")
       : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
           ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-          : "https://bgv-platformdemo.vercel.app");
+          : "https://bgv.dqnex.online");
 
     if (users.length > 0) {
       const user = users[0];
