@@ -156,6 +156,37 @@ app.get("/", (req, res) => {
   res.send("Backend Server Running 🚀");
 });
 
+/* ───────── FRONTEND RESET / SETUP REDIRECTS (FALLBACK) ───────── */
+const passwordResetPaths = [
+  "/reset-password",
+  "/setup-password",
+  "/admin/reset-password",
+  "/admin/setup-password",
+  "/admin/client-setup-password",
+  "/client-setup-password",
+  "/hr/reset-password",
+  "/hr/setup-password",
+  "/hr-setup-password",
+  "/vendor/reset-password",
+  "/vendor/setup-password",
+  "/vendor-setup-password",
+  "/candidate/reset-password",
+  "/candidate/setup-password",
+  "/super-admin/reset-password",
+];
+
+passwordResetPaths.forEach((routePath) => {
+  app.get(routePath, (req, res) => {
+    const isDev = req.hostname === "localhost" || req.hostname === "127.0.0.1";
+    const frontendBase = isDev
+      ? "http://localhost:5173"
+      : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
+          ? process.env.FRONTEND_URL.replace(/\/+$/, "")
+          : "https://bgv.dqnex.online");
+    return res.redirect(`${frontendBase}${req.originalUrl}`);
+  });
+});
+
 /* PORT */
 const PORT = process.env.PORT || 5000;
 

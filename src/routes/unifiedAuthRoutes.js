@@ -395,7 +395,7 @@ router.post("/unified-forgot-password", async (req, res) => {
       });
 
     const [users] = await pool.query(
-      "SELECT users_id, email, username, role_name FROM users WHERE email = ? AND is_active = 1 AND is_delete = 0",
+      "SELECT users_id, first_name, last_name, email, username, role_name FROM users WHERE email = ? AND is_active = 1 AND is_delete = 0",
       [normalizedEmail]
     );
 
@@ -406,6 +406,7 @@ router.post("/unified-forgot-password", async (req, res) => {
     if (users.length > 0) {
       const user = users[0];
       const roleType = normalizeRoleType(user.role_name);
+      const displayName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || user.username || user.email;
 
       const resetToken = crypto.randomBytes(32).toString("hex");
       const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
@@ -429,7 +430,7 @@ router.post("/unified-forgot-password", async (req, res) => {
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4F46E5;">Password Reset Request</h2>
-            <p>Hello ${user.username || "User"},</p>
+            <p>Hello ${displayName},</p>
             <p>You requested a password reset for your account. Click the button below to set a new password:</p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="${resetLink}" style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
@@ -444,12 +445,13 @@ router.post("/unified-forgot-password", async (req, res) => {
 
     // Check Vendor
     const [vendors] = await pool.query(
-      "SELECT vendor_id, poc_email, company_name FROM vendor_master WHERE poc_email = ? AND is_delete = 0",
+      "SELECT vendor_id, poc_first_name, poc_last_name, poc_email, company_name FROM vendor_master WHERE poc_email = ? AND is_delete = 0",
       [normalizedEmail]
     );
 
     if (vendors.length > 0) {
       const vendor = vendors[0];
+      const vendorDisplayName = [vendor.poc_first_name, vendor.poc_last_name].filter(Boolean).join(" ").trim() || vendor.company_name || "Vendor";
       const resetToken = crypto.randomBytes(32).toString("hex");
       const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
 
@@ -467,7 +469,7 @@ router.post("/unified-forgot-password", async (req, res) => {
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4F46E5;">Password Reset Request</h2>
-            <p>Hello ${vendor.company_name || "Vendor"},</p>
+            <p>Hello ${vendorDisplayName},</p>
             <p>You requested a password reset for your Vendor account. Click the button below:</p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="${resetLink}" style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
