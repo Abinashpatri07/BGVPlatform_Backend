@@ -411,21 +411,21 @@ router.post("/unified-forgot-password", async (req, res) => {
       const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
 
       await pool.query(
-        "UPDATE users SET password_reset_token = ?, password_reset_expiry = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE users_id = ?",
+        "UPDATE users SET password_reset_token = ?, password_reset_expiry = DATE_ADD(NOW(), INTERVAL 24 HOUR) WHERE users_id = ?",
         [resetTokenHash, user.users_id]
       );
 
       let resetPath = "/super-admin/reset-password";
       if (roleType === "admin") resetPath = "/admin/reset-password";
       else if (roleType === "hr") resetPath = "/hr/reset-password";
-      else if (roleType === "candidate") resetPath = "/reset-password";
+      else if (roleType === "candidate") resetPath = "/candidate/reset-password";
 
       const resetLink = `${frontendUrl}${resetPath}?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
 
       await sendEmail({
         to: user.email,
         subject: "BGV Platform - Password Reset Request",
-        text: `You requested a password reset. Click the link below to reset your password:\n\n${resetLink}\n\nThis link is valid for 1 hour.`,
+        text: `You requested a password reset. Click the link below to reset your password:\n\n${resetLink}\n\nThis link is valid for 24 hours.`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4F46E5;">Password Reset Request</h2>
@@ -434,7 +434,7 @@ router.post("/unified-forgot-password", async (req, res) => {
             <div style="text-align: center; margin: 30px 0;">
               <a href="${resetLink}" style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
             </div>
-            <p style="color: #6B7280; font-size: 14px;">This link is valid for <strong>1 hour</strong>.</p>
+            <p style="color: #6B7280; font-size: 14px;">This link is valid for <strong>24 hours</strong>.</p>
           </div>
         `,
       });
@@ -454,7 +454,7 @@ router.post("/unified-forgot-password", async (req, res) => {
       const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
 
       await pool.query(
-        "UPDATE vendor_master SET password_reset_token = ?, password_reset_expiry = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE vendor_id = ?",
+        "UPDATE vendor_master SET password_reset_token = ?, password_reset_expiry = DATE_ADD(NOW(), INTERVAL 24 HOUR) WHERE vendor_id = ?",
         [resetTokenHash, vendor.vendor_id]
       );
 
@@ -463,7 +463,7 @@ router.post("/unified-forgot-password", async (req, res) => {
       await sendEmail({
         to: vendor.poc_email,
         subject: "Vendor Portal - Password Reset Request",
-        text: `You requested a password reset. Click the link below to reset your password:\n\n${resetLink}\n\nThis link is valid for 1 hour.`,
+        text: `You requested a password reset. Click the link below to reset your password:\n\n${resetLink}\n\nThis link is valid for 24 hours.`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #4F46E5;">Password Reset Request</h2>
@@ -472,7 +472,7 @@ router.post("/unified-forgot-password", async (req, res) => {
             <div style="text-align: center; margin: 30px 0;">
               <a href="${resetLink}" style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
             </div>
-            <p style="color: #6B7280; font-size: 14px;">This link is valid for <strong>1 hour</strong>.</p>
+            <p style="color: #6B7280; font-size: 14px;">This link is valid for <strong>24 hours</strong>.</p>
           </div>
         `,
       });

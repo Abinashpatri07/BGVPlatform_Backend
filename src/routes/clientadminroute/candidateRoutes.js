@@ -1332,9 +1332,10 @@ router.get("/setup-info", async (req, res) => {
   }
 
   try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [users] = await pool.query(
-      "SELECT email FROM users WHERE password_reset_token = ? AND is_delete = 0",
-      [token]
+      "SELECT email FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (users.length === 0) {
@@ -1377,9 +1378,10 @@ router.post("/send-setup-otp", async (req, res) => {
   }
 
   try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [users] = await pool.query(
-      "SELECT users_id, email, first_name FROM users WHERE password_reset_token = ? AND is_delete = 0",
-      [token]
+      "SELECT users_id, email, first_name FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (users.length === 0) {
@@ -1461,9 +1463,10 @@ router.post("/set-password", async (req, res) => {
 
   try {
     // Verify token
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [users] = await pool.query(
-      "SELECT users_id, last_otp, otp_expiry FROM users WHERE password_reset_token = ? AND is_delete = 0",
-      [token]
+      "SELECT users_id, last_otp, otp_expiry FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (users.length === 0) {

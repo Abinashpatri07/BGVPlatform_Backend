@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import pool from "../../config/db.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -266,9 +267,10 @@ router.get("/setup-info", async (req, res) => {
     const { token } = req.query;
     if (!token) return res.status(400).json({ success: false, message: "Token is required" });
 
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [rows] = await pool.query(
-      "SELECT poc_email FROM vendor_master WHERE password_reset_token = ? AND is_delete = 0",
-      [token]
+      "SELECT poc_email FROM vendor_master WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (rows.length === 0) {
@@ -294,9 +296,10 @@ router.post("/send-setup-otp", async (req, res) => {
     const { token } = req.body;
     if (!token) return res.status(400).json({ success: false, message: "Token is required" });
 
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [rows] = await pool.query(
-      "SELECT vendor_id, poc_email FROM vendor_master WHERE password_reset_token = ? AND is_delete = 0",
-      [token]
+      "SELECT vendor_id, poc_email FROM vendor_master WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (rows.length === 0) {
@@ -337,9 +340,10 @@ router.post("/set-password", async (req, res) => {
   try {
     const { token, otp, password } = req.body;
 
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [rows] = await pool.query(
-      "SELECT vendor_id, last_otp, otp_expiry FROM vendor_master WHERE password_reset_token = ? AND is_delete = 0",
-      [token]
+      "SELECT vendor_id, last_otp, otp_expiry FROM vendor_master WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (rows.length === 0) {

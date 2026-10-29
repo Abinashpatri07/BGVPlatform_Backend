@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import validateLogin from "../../middleware/clientadmin/validateLogin.js";
 import pool from "../../config/db.js";
 import bcrypt from "bcryptjs";
@@ -253,9 +254,10 @@ router.get("/setup-info", async (req, res) => {
   if (!token) return res.status(400).json({ success: false, message: "Token is required." });
 
   try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [users] = await pool.query(
-      "SELECT email FROM users WHERE password_reset_token = ? AND role_name = 'Client Admin' AND is_delete = 0",
-      [token]
+      "SELECT email FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND role_name = 'Client Admin' AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (users.length === 0) {
@@ -292,9 +294,10 @@ router.post("/send-setup-otp", async (req, res) => {
   if (!token) return res.status(400).json({ success: false, message: "Token is required." });
 
   try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [users] = await pool.query(
-      "SELECT users_id, email, first_name FROM users WHERE password_reset_token = ? AND role_name = 'Client Admin' AND is_delete = 0",
-      [token]
+      "SELECT users_id, email, first_name FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND role_name = 'Client Admin' AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (users.length === 0) {
@@ -353,9 +356,10 @@ router.post("/set-password", async (req, res) => {
   }
 
   try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const [users] = await pool.query(
-      "SELECT users_id, last_otp, otp_expiry FROM users WHERE password_reset_token = ? AND role_name = 'Client Admin' AND is_delete = 0",
-      [token]
+      "SELECT users_id, last_otp, otp_expiry FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND role_name = 'Client Admin' AND is_delete = 0",
+      [token, tokenHash]
     );
 
     if (users.length === 0) {
