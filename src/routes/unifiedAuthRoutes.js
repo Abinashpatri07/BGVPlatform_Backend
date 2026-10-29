@@ -376,10 +376,10 @@ router.post("/unified-resend-otp", async (req, res) => {
 });
 
 /**
- * POST /api/auth/unified-forgot-password
+ * POST /api/auth/unified-forgot-password and /api/auth/forgot-password
  * Identifies the account role and sends the appropriate password reset email with correct reset link
  */
-router.post("/unified-forgot-password", async (req, res) => {
+const handleForgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -486,6 +486,192 @@ router.post("/unified-forgot-password", async (req, res) => {
   } catch (error) {
     console.error("Unified Forgot Password Error:", error);
     return res.status(500).json({ success: false, message: "Internal server error. Please try again." });
+  }
+};
+
+router.post("/unified-forgot-password", handleForgotPassword);
+router.post("/forgot-password", handleForgotPassword);
+
+/**
+ * GET /api/auth/setup-info
+ * Returns email & user details associated with setup/reset token across all roles
+ */
+router.get("/setup-info", async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ success: false, message: "Token is required." });
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Check users table
+    const [users] = await pool.query(
+      "SELECT users_id, email, first_name, last_name, role_name FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
+    );
+
+    if (users.length > 0) {
+      return res.status(200).json({
+        success: true,
+        email: users[0].email,
+        name: [users[0].first_name, users[0].last_name].filter(Boolean).join(" ").trim(),
+        role: users[0].role_name,
+      });
+    }
+
+    // Check vendor_master table
+    const [vendors] = await pool.query(
+      "SELECT vendor_id, poc_email, poc_first_name, poc_last_name, company_name FROM vendor_master WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
+    );
+
+    if (vendors.length > 0) {
+      return res.status(200).json({
+        success: true,
+        email: vendors[0].poc_email,
+        name: [vendors[0].poc_first_name, vendors[0].poc_last_name].filter(Boolean).join(" ").trim() || vendors[0].company_name,
+        role: "Vendor",
+      });
+    }
+
+    return res.status(404).json({ success: false, message: "Invalid or expired setup token." });
+  } catch (error) {
+    console.error("Unified Setup Info Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/**
+ * POST /api/auth/send-setup-otp
+ * Sends OTP for password setup across all roles
+ */
+router.post("/send-setup-otp", async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ success: false, message: "Token is required." });
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Check users table
+    const [users] = await pool.query(
+      "SELECT users_id, email, first_name FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
+    );
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    if (users.length > 0) {
+      const user = users[0];
+      await pool.query(
+        "UPDATE users SET last_otp = ?, otp_expiry = ? WHERE users_id = ?",
+        [otp, otpExpiry, user.users_id]
+      );
+
+      sendEmail({
+        to: user.email,
+        subject: "Your OTP for Password Setup - BGV Platform",
+        text: `Your OTP to set your password is: ${otp}. It is valid for 10 minutes.`,
+        html: `<h3>Password Setup OTP</h3><p>Your OTP is: <b style="font-size: 20px; color: #4F46E5;">${otp}</b></p><p>It is valid for 10 minutes.</p>`,
+      }).catch(err => console.warn("Background email error:", err));
+
+      return res.status(200).json({ success: true, message: "OTP sent successfully." });
+    }
+
+    // Check vendor_master table
+    const [vendors] = await pool.query(
+      "SELECT vendor_id, poc_email, poc_first_name FROM vendor_master WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
+    );
+
+    if (vendors.length > 0) {
+      const vendor = vendors[0];
+      await pool.query(
+        "UPDATE vendor_master SET last_otp = ?, otp_expiry = ? WHERE vendor_id = ?",
+        [otp, otpExpiry, vendor.vendor_id]
+      );
+
+      sendEmail({
+        to: vendor.poc_email,
+        subject: "Vendor Portal - Password Setup OTP",
+        text: `Your OTP to set your password is: ${otp}. It is valid for 10 minutes.`,
+        html: `<h3>Password Setup OTP</h3><p>Your OTP is: <b style="font-size: 20px; color: #4F46E5;">${otp}</b></p><p>It is valid for 10 minutes.</p>`,
+      }).catch(err => console.warn("Background email error:", err));
+
+      return res.status(200).json({ success: true, message: "OTP sent successfully." });
+    }
+
+    return res.status(404).json({ success: false, message: "Invalid or expired setup token." });
+  } catch (error) {
+    console.error("Unified Send Setup OTP Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/**
+ * POST /api/auth/set-password
+ * Verifies OTP and updates password across all roles
+ */
+router.post("/set-password", async (req, res) => {
+  try {
+    const { token, otp, password } = req.body;
+    if (!token || !otp || !password) {
+      return res.status(400).json({ success: false, message: "Token, OTP, and password are required." });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Check users table
+    const [users] = await pool.query(
+      "SELECT users_id, last_otp, otp_expiry FROM users WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
+    );
+
+    if (users.length > 0) {
+      const user = users[0];
+      if (!user.last_otp || user.last_otp !== otp) {
+        return res.status(400).json({ success: false, message: "Invalid OTP." });
+      }
+      if (new Date(user.otp_expiry) < new Date()) {
+        return res.status(400).json({ success: false, message: "OTP has expired." });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await pool.query(
+        "UPDATE users SET password = ?, password_reset_token = NULL, password_reset_expiry = NULL, last_otp = NULL, otp_expiry = NULL WHERE users_id = ?",
+        [hashedPassword, user.users_id]
+      );
+
+      return res.status(200).json({ success: true, message: "Password set successfully." });
+    }
+
+    // Check vendor_master table
+    const [vendors] = await pool.query(
+      "SELECT vendor_id, last_otp, otp_expiry FROM vendor_master WHERE (password_reset_token = ? OR password_reset_token = ?) AND is_delete = 0",
+      [token, tokenHash]
+    );
+
+    if (vendors.length > 0) {
+      const vendor = vendors[0];
+      if (!vendor.last_otp || vendor.last_otp !== otp) {
+        return res.status(400).json({ success: false, message: "Invalid OTP." });
+      }
+      if (new Date(vendor.otp_expiry) < new Date()) {
+        return res.status(400).json({ success: false, message: "OTP has expired." });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await pool.query(
+        "UPDATE vendor_master SET password = ?, password_reset_token = NULL, password_reset_expiry = NULL, last_otp = NULL, otp_expiry = NULL WHERE vendor_id = ?",
+        [hashedPassword, vendor.vendor_id]
+      );
+
+      return res.status(200).json({ success: true, message: "Password set successfully." });
+    }
+
+    return res.status(400).json({ success: false, message: "Invalid or expired setup token." });
+  } catch (error) {
+    console.error("Unified Set Password Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 
