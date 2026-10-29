@@ -8,6 +8,40 @@ import validateCreateCandidate from
   "../../middleware/hr/validateCreateCandidate.js";
 
 import pool from "../../config/db.js";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "fallback_super_secret_key";
+
+const getHrUserFromRequest = async (req) => {
+  let userId = null;
+  let clientId = null;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, JWT_SECRET);
+      userId = decoded.id;
+      clientId = decoded.client_id;
+    } catch (e) {
+      // Token invalid or expired
+    }
+  }
+
+  if (!userId && req.query.hrId) userId = parseInt(req.query.hrId);
+  if (!userId && req.headers["x-user-id"]) userId = parseInt(req.headers["x-user-id"]);
+
+  if (userId && !clientId) {
+    try {
+      const [u] = await pool.query("SELECT client_id FROM users WHERE users_id = ?", [userId]);
+      if (u.length > 0) clientId = u[0].client_id;
+    } catch (err) {
+      console.error("Error fetching HR client_id:", err);
+    }
+  }
+
+  return { userId, clientId };
+};
 
 const router = express.Router();
 import apiLogger from "../../middleware/apiLogger.js";
@@ -200,6 +234,15 @@ router.post(
       // Generate a temporary candidate_id to satisfy NOT NULL constraint
       const tempId = "TEMP-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
 
+      const { userId, clientId } = await getHrUserFromRequest(req);
+      const effectiveUserId = createdById || userId || null;
+      let effectiveClientId = clientId;
+      if (!effectiveClientId && effectiveUserId) {
+        const [u] = await pool.query("SELECT client_id FROM users WHERE users_id = ?", [effectiveUserId]);
+        if (u.length > 0) effectiveClientId = u[0].client_id;
+      }
+      effectiveClientId = effectiveClientId || 1;
+
       /* ── INSERT INTO candidate ── */
       const [result] = await pool.query(
         `INSERT INTO candidate
@@ -209,11 +252,12 @@ router.post(
            candidate_function, candidate_tag,
            verification_status, is_active, is_delete,
            created_at, updated_at)
-         VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
         [
           tempId,
-          createdById || null,
-          createdById || null, // Assuming HR creating the candidate assigns themselves
+          effectiveClientId,
+          effectiveUserId,
+          effectiveUserId, // Assuming HR creating the candidate assigns themselves
           firstName,
           lastName,
           email,
@@ -327,6 +371,15 @@ router.post(
         });
       }
 
+      const { userId, clientId } = await getHrUserFromRequest(req);
+      const effectiveUserId = req.body.createdById || userId || null;
+      let effectiveClientId = clientId;
+      if (!effectiveClientId && effectiveUserId) {
+        const [u] = await pool.query("SELECT client_id FROM users WHERE users_id = ?", [effectiveUserId]);
+        if (u.length > 0) effectiveClientId = u[0].client_id;
+      }
+      effectiveClientId = effectiveClientId || 1;
+
       /* VALIDATION — required fields */
       const validationErrors = [];
       data.forEach((item, index) => {
@@ -400,8 +453,8 @@ router.post(
              candidate_function, candidate_tag,
              verification_status, is_active, is_delete,
              created_at, updated_at)
-           VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
-          [tempId, createdById || null, createdById || null, firstName, lastName, email, phone, jobFunction || null, tag || null]
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, NOW(), NOW())`,
+          [tempId, effectiveClientId, effectiveUserId, effectiveUserId, firstName, lastName, email, phone, jobFunction || null, tag || null]
         );
 
         const newCandId = insertResult.insertId;
@@ -577,16 +630,45 @@ router.get(
 
     try {
       const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
+      const limit = req.query.limit ? parseInt(req.query.limit) : 1000;
       const offset = (page - 1) * limit;
-      const clientId = 1; // Default client id for mock auth
+
+      const { userId, clientId } = await getHrUserFromRequest(req);
+
+      let whereClause = "WHERE is_delete = 0";
+      let countParams = [];
+      let queryParams = [];
+
+      if (userId) {
+        // HR only sees candidates created by them or assigned to them
+        whereClause += " AND (created_by_users = ? OR assigned_userid = ?)";
+        countParams.push(userId, userId);
+        queryParams.push(userId, userId);
+      } else if (clientId) {
+        whereClause += " AND client_id = ?";
+        countParams.push(clientId);
+        queryParams.push(clientId);
+      } else {
+        return res.status(200).json({
+          success: true,
+          candidates: [],
+          pagination: {
+            totalRecords: 0,
+            totalPages: 0,
+            currentPage: page,
+            limit
+          }
+        });
+      }
 
       const [countRows] = await pool.query(
-        `SELECT COUNT(*) as total FROM candidate WHERE is_delete = 0 AND client_id = ?`,
-        [clientId]
+        `SELECT COUNT(*) as total FROM candidate ${whereClause}`,
+        countParams
       );
       const totalRecords = countRows[0].total;
       const totalPages = Math.ceil(totalRecords / limit);
+
+      queryParams.push(limit, offset);
 
       const [rows] = await pool.query(
         `SELECT
@@ -608,10 +690,10 @@ router.get(
           'HR' AS created_by_role,
           '-' AS created_by_name
          FROM candidate
-         WHERE is_delete = 0 AND client_id = ?
+         ${whereClause}
          ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
-        [clientId, limit, offset]
+        queryParams
       );
 
       return res.status(200).json({
