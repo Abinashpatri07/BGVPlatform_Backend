@@ -113,7 +113,7 @@ router.post("/send-payment-link", verifyToken, async (req, res) => {
       },
       link_notify: { send_sms: false, send_email: false },
       link_meta: { 
-        notify_url: process.env.WEBHOOK_URL || "https://bgvplatform-backend.onrender.com/api/client-admin/billing/webhook"
+        notify_url: process.env.WEBHOOK_URL || `${process.env.FRONTEND_URL || "https://bgv.dqnex.online"}/api/client-admin/billing/webhook`
       },
       link_id: linkId,
       link_amount: amount,

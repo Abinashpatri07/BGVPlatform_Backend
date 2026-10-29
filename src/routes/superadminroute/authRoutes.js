@@ -381,13 +381,10 @@ router.post(
         [resetTokenHash, user.users_id]
       );
 
-      // Build reset link dynamically using the request origin (works for Vercel, custom domain, or localhost)
-      const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
-      const frontendUrl = (origin && origin !== "null")
-        ? origin.replace(/\/+$/, "")
-        : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
-            ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-            : "https://bgv.dqnex.online");
+      // Build reset link using FRONTEND_URL env (always use production domain, never origin)
+      const frontendUrl = (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"))
+        ? process.env.FRONTEND_URL.replace(/\/+$/, "")
+        : "https://bgv.dqnex.online";
       const resetLink = `${frontendUrl}/super-admin/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
 
       // Send email

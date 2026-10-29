@@ -399,12 +399,9 @@ router.post("/unified-forgot-password", async (req, res) => {
       [normalizedEmail]
     );
 
-    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
-    const frontendUrl = (origin && origin !== "null")
-      ? origin.replace(/\/+$/, "")
-      : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
-          ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-          : "https://bgv.dqnex.online");
+    const frontendUrl = (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"))
+      ? process.env.FRONTEND_URL.replace(/\/+$/, "")
+      : "https://bgv.dqnex.online";
 
     if (users.length > 0) {
       const user = users[0];

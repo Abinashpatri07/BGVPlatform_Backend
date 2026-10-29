@@ -431,12 +431,9 @@ router.post("/forgot-password", async (req, res) => {
       [resetToken, tokenExpiry, user.users_id]
     );
 
-    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
-    const baseUrl = (origin && origin !== "null")
-      ? origin.replace(/\/+$/, "")
-      : (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost")
-          ? process.env.FRONTEND_URL.replace(/\/+$/, "")
-          : "https://bgv.dqnex.online");
+    const baseUrl = (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"))
+      ? process.env.FRONTEND_URL.replace(/\/+$/, "")
+      : "https://bgv.dqnex.online";
     const portalUrl = `${baseUrl}/admin/client-setup-password?token=${resetToken}`;
 
     const emailHtml = `
