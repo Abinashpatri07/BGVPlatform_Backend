@@ -84,6 +84,28 @@ app.use("/uploads", express.static(uploadsDirectory, {
   },
 }));
 
+// Fallback: If file is not present on local disk, proxy/stream it from the production server (Railway persistent storage)
+app.use("/uploads", async (req, res, next) => {
+  const remoteBase = (process.env.REMOTE_UPLOADS_URL || "https://api.dqnex.online").replace(/\/+$/, "");
+  const remoteUrl = `${remoteBase}/uploads${req.path}`;
+  try {
+    const remoteRes = await fetch(remoteUrl);
+    if (!remoteRes.ok) {
+      return res.status(remoteRes.status).send("File not found");
+    }
+    const contentType = remoteRes.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+    if (req.path.toLowerCase().endsWith(".pdf")) {
+      res.setHeader("Content-Disposition", "inline");
+    }
+    const arrayBuffer = await remoteRes.arrayBuffer();
+    return res.send(Buffer.from(arrayBuffer));
+  } catch (err) {
+    console.error("Uploads proxy error:", err.message);
+    return res.status(404).send("File not found");
+  }
+});
+
 
 /* SWAGGER DOCS */
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
