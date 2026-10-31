@@ -42,61 +42,47 @@ router.get("/", async (req, res) => {
     const moduleFilter = req.query.module || "All Modules";
     const dateFilter = req.query.dateFilter || "All Time";
 
-    let baseQuery = `
-      FROM audit_logs a
-      LEFT JOIN users u ON a.user_id = u.users_id
-      WHERE 1=1
-    `;
+    let filterSql = "";
     
     const queryParams = [];
 
     if (search) {
-      baseQuery += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR a.remarks LIKE ? OR a.ip LIKE ?)`;
+      filterSql += ` AND (u.first_name LIKE ? OR u.last_name LIKE ? OR a.remarks LIKE ? OR a.ip LIKE ?)`;
       const searchParam = `%${search}%`;
       queryParams.push(searchParam, searchParam, searchParam, searchParam);
     }
 
     if (moduleFilter && moduleFilter !== "All Modules") {
-      baseQuery += ` AND a.module_type = ?`;
+      filterSql += ` AND a.module_type = ?`;
       queryParams.push(moduleFilter);
     }
 
     if (dateFilter && dateFilter !== "All Time") {
       if (dateFilter === "Today") {
-        baseQuery += ` AND DATE(a.created_at) = CURDATE()`;
+        filterSql += ` AND DATE(a.created_at) = CURDATE()`;
       } else if (dateFilter === "Yesterday") {
-        baseQuery += ` AND DATE(a.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`;
+        filterSql += ` AND DATE(a.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`;
       } else if (dateFilter === "Last 7 Days") {
-        baseQuery += ` AND DATE(a.created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`;
+        filterSql += ` AND DATE(a.created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`;
       } else if (dateFilter === "Last 30 Days") {
-        baseQuery += ` AND DATE(a.created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
+        filterSql += ` AND DATE(a.created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
       }
     }
 
     // Count Total
-    const [countResult] = await pool.query(`SELECT COUNT(*) as total ${baseQuery}`, queryParams);
+    const countQuery =
+      "SELECT COUNT(*) as total FROM audit_logs a LEFT JOIN users u ON a.user_id = u.users_id WHERE 1=1" +
+      filterSql;
+    const [countResult] = await pool.query(countQuery, queryParams);
     const totalCount = countResult[0].total;
 
     // Fetch Data
-    const dataQuery = `
-      SELECT 
-        a.audit_id,
-        u.first_name,
-        u.last_name,
-        u.first_name AS firstname,
-        u.last_name AS lastname,
-        u.role_name,
-        a.action,
-        a.module_type,
-        a.status,
-        a.ip,
-        a.remarks,
-        a.created_at
-      ${baseQuery}
-      ORDER BY a.created_at DESC
-      LIMIT ? OFFSET ?
-    `;
-    
+    const dataQuery =
+      "SELECT a.audit_id, u.first_name, u.last_name, u.first_name AS firstname, u.last_name AS lastname, u.role_name, a.action, a.module_type, a.status, a.ip, a.remarks, a.created_at " +
+      "FROM audit_logs a LEFT JOIN users u ON a.user_id = u.users_id WHERE 1=1" +
+      filterSql +
+      " ORDER BY a.created_at DESC LIMIT ? OFFSET ?";
+
     const [rows] = await pool.query(dataQuery, [...queryParams, limit, offset]);
 
     return res.status(200).json({

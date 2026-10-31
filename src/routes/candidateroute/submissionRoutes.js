@@ -441,25 +441,53 @@ router.post("/final", async (req, res) => {
     const candidate_id = "CAND-" + cand_id;
     const client_id = 1; // Default client ID as used elsewhere
 
-    const moduleMappings = [
-      { table: 'candidate_identity', type: 1 },
-      { table: 'candidate_address', type: 2 },
-      { table: 'candidate_education', type: 3 },
-      { table: 'candidate_employment', type: 5 },
-      { table: 'candidate_drug', type: 7 },
-      { table: 'candidate_criminal', type: 8 },
-      { table: 'candidate_reference', type: 9 }
-    ];
+    const MODULE_QUERIES = {
+      candidate_identity: {
+        type: 1,
+        countQuery: "SELECT COUNT(*) as count FROM `candidate_identity` WHERE cand_id = ?",
+        updateQuery: "UPDATE `candidate_identity` SET case_id = ? WHERE cand_id = ?",
+      },
+      candidate_address: {
+        type: 2,
+        countQuery: "SELECT COUNT(*) as count FROM `candidate_address` WHERE cand_id = ?",
+        updateQuery: "UPDATE `candidate_address` SET case_id = ? WHERE cand_id = ?",
+      },
+      candidate_education: {
+        type: 3,
+        countQuery: "SELECT COUNT(*) as count FROM `candidate_education` WHERE cand_id = ?",
+        updateQuery: "UPDATE `candidate_education` SET case_id = ? WHERE cand_id = ?",
+      },
+      candidate_employment: {
+        type: 5,
+        countQuery: "SELECT COUNT(*) as count FROM `candidate_employment` WHERE cand_id = ?",
+        updateQuery: "UPDATE `candidate_employment` SET case_id = ? WHERE cand_id = ?",
+      },
+      candidate_drug: {
+        type: 7,
+        countQuery: "SELECT COUNT(*) as count FROM `candidate_drug` WHERE cand_id = ?",
+        updateQuery: "UPDATE `candidate_drug` SET case_id = ? WHERE cand_id = ?",
+      },
+      candidate_criminal: {
+        type: 8,
+        countQuery: "SELECT COUNT(*) as count FROM `candidate_criminal` WHERE cand_id = ?",
+        updateQuery: "UPDATE `candidate_criminal` SET case_id = ? WHERE cand_id = ?",
+      },
+      candidate_reference: {
+        type: 9,
+        countQuery: "SELECT COUNT(*) as count FROM `candidate_reference` WHERE cand_id = ?",
+        updateQuery: "UPDATE `candidate_reference` SET case_id = ? WHERE cand_id = ?",
+      },
+    };
 
-    for (const mod of moduleMappings) {
+    for (const [tableName, config] of Object.entries(MODULE_QUERIES)) {
       try {
-        // Check if there are records in this table for the candidate
-        const [rows] = await pool.query(`SELECT COUNT(*) as count FROM \`${mod.table}\` WHERE cand_id = ?`, [cand_id]);
+        // Check if there are records in this table for the candidate using a 100% static query
+        const [rows] = await pool.query(config.countQuery, [cand_id]);
         if (rows[0].count > 0) {
           // Check if case already exists for this candidate and module type to avoid duplicate cases
           const [existingCase] = await pool.query(
-            `SELECT case_id FROM case_master WHERE cand_id = ? AND case_type = ? ORDER BY case_id DESC LIMIT 1`,
-            [cand_id, mod.type]
+            "SELECT case_id FROM case_master WHERE cand_id = ? AND case_type = ? ORDER BY case_id DESC LIMIT 1",
+            [cand_id, config.type]
           );
 
           let currentCaseId;
@@ -467,19 +495,17 @@ router.post("/final", async (req, res) => {
             currentCaseId = existingCase[0].case_id;
           } else {
             // Create a new case in case_master only if one doesn't already exist
-            const insertQuery = `
-              INSERT INTO case_master (cand_id, candidate_id, client_id, case_type)
-              VALUES (?, ?, ?, ?)
-            `;
-            const [result] = await pool.query(insertQuery, [cand_id, candidate_id, client_id, mod.type]);
+            const insertQuery =
+              "INSERT INTO case_master (cand_id, candidate_id, client_id, case_type) VALUES (?, ?, ?, ?)";
+            const [result] = await pool.query(insertQuery, [cand_id, candidate_id, client_id, config.type]);
             currentCaseId = result.insertId;
           }
 
-          // Update the child table with the case_id
-          await pool.query(`UPDATE \`${mod.table}\` SET case_id = ? WHERE cand_id = ?`, [currentCaseId, cand_id]);
+          // Update the child table with the case_id using a 100% static query
+          await pool.query(config.updateQuery, [currentCaseId, cand_id]);
         }
       } catch (err) {
-        console.warn(`Failed to generate case for table ${mod.table}:`, err.message);
+        console.warn(`Failed to generate case for table ${tableName}:`, err.message);
       }
     }
     

@@ -803,19 +803,16 @@ router.patch("/bulk-assign-hr", async (req, res) => {
     const hr = hrResults[0];
 
     /* ── UPDATE CANDIDATES ── */
-    // Create placeholders for the IN clause (?, ?, ?)
-    const placeholders = candidateIds.map(() => '?').join(',');
+    const updateQuery =
+      "UPDATE candidate SET assigned_userid = ?, assigned_hr_firstname = ?, assigned_hr_lastname = ?, assigned_hr_email = ?, updated_at = NOW() WHERE cand_id IN (?)";
 
-    const [updateResult] = await pool.query(
-      `UPDATE candidate 
-       SET assigned_userid = ?, 
-           assigned_hr_firstname = ?, 
-           assigned_hr_lastname = ?, 
-           assigned_hr_email = ?,
-           updated_at = NOW()
-       WHERE cand_id IN (${placeholders})`,
-      [hrId, hr.firstname, hr.lastname, hr.email, ...candidateIds]
-    );
+    const [updateResult] = await pool.query(updateQuery, [
+      hrId,
+      hr.firstname,
+      hr.lastname,
+      hr.email,
+      candidateIds
+    ]);
 
     return res.status(200).json({
       success: true,
